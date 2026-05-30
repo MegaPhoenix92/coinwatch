@@ -1,0 +1,25 @@
+# Agent instruction files — kept out of the public repo
+CLAUDE.md
+AGENT.md
+AGENTS.md
+GEMINI.md
+.clinerules-*
+.cursorrules
+.aider*
+
+# Proprietary design docs — local-only, never published (per project convention)
+docs/
+
+# Secrets & local config — xpubs / keys / API keys must NEVER be committed
+.env
+config/*.local.json
+
+# Dependencies / build / cache
+node_modules/
+dist/
+*.db
+*.db-*
+coinwatch.db*
+
+# OS
+.DS_Store
