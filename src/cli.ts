@@ -5,11 +5,16 @@ import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import type { ChainAdapter } from './adapters/chain-adapter.js';
 import { BitcoinAdapter } from './adapters/bitcoin-adapter.js';
+import { EvmAdapter } from './adapters/evm-adapter.js';
+import { SolanaAdapter } from './adapters/solana-adapter.js';
 import { loadAccounts, loadEnv } from './config/load.js';
+import { Store } from './db/store.js';
 import type { ChainFamily } from './domain/chains.js';
 import { buildServer } from './mcp/server.js';
 import { CoinGeckoPriceProvider } from './providers/coingecko.js';
 import { MempoolProvider } from './providers/mempool.js';
+import { createSolanaKitProvider } from './providers/solana-kit.js';
+import { ViemProvider } from './providers/viem.js';
 import { PortfolioService } from './services/portfolio-service.js';
 
 export const SYSTEM_PROMPT = [
@@ -62,24 +67,40 @@ export async function main(): Promise<void> {
 
   const adapters = new Map<ChainFamily, ChainAdapter>();
   adapters.set('bitcoin', new BitcoinAdapter(new MempoolProvider()));
+  adapters.set('evm', new EvmAdapter(new ViemProvider({ alchemyApiKey: env.alchemyApiKey })));
+  adapters.set(
+    'solana',
+    new SolanaAdapter(
+      createSolanaKitProvider(
+        env.heliusApiKey === undefined
+          ? undefined
+          : `https://mainnet.helius-rpc.com/?api-key=${env.heliusApiKey}`,
+      ),
+    ),
+  );
 
   const prices = new CoinGeckoPriceProvider({ apiKey: env.coingeckoApiKey });
   const service = new PortfolioService(adapters, prices);
-  const server = buildServer(service, accounts);
+  const store = Store.open('coinwatch.db');
+  const server = buildServer(service, accounts, store);
 
-  for await (const msg of query({
-    prompt: userMessages(),
-    options: buildQueryOptions(server),
-  })) {
-    if (msg.type === 'assistant') {
-      for (const block of msg.message.content) {
-        if (block.type === 'text') {
-          output.write(`${block.text}\n`);
+  try {
+    for await (const msg of query({
+      prompt: userMessages(),
+      options: buildQueryOptions(server),
+    })) {
+      if (msg.type === 'assistant') {
+        for (const block of msg.message.content) {
+          if (block.type === 'text') {
+            output.write(`${block.text}\n`);
+          }
         }
+      } else if (msg.type === 'result') {
+        output.write(`[coinwatch] result: ${msg.subtype}\n`);
       }
-    } else if (msg.type === 'result') {
-      output.write(`[coinwatch] result: ${msg.subtype}\n`);
     }
+  } finally {
+    store.close();
   }
 }
 

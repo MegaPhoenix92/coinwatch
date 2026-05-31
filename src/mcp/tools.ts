@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { PortfolioService } from '../services/portfolio-service.js';
 import type { AccountDescriptor } from '../domain/account.js';
 import type { Tx } from '../domain/types.js';
+import type { Store } from '../db/store.js';
 
 type ToolResult = { content: { type: 'text'; text: string }[] };
 
@@ -10,7 +11,11 @@ const asText = (text: string): ToolResult => ({
   content: [{ type: 'text', text }],
 });
 
-export function buildHandlers(service: PortfolioService, accounts: AccountDescriptor[]) {
+export function buildHandlers(
+  service: PortfolioService,
+  accounts: AccountDescriptor[],
+  store?: Store,
+) {
   return {
     get_portfolio: async (): Promise<ToolResult> => {
       const view = await service.getPortfolio(accounts);
@@ -19,7 +24,14 @@ export function buildHandlers(service: PortfolioService, accounts: AccountDescri
 
     list_addresses: async (): Promise<ToolResult> => {
       const addresses = await service.listAddresses(accounts);
-      return asText(JSON.stringify(addresses, null, 2));
+      const enriched =
+        store === undefined
+          ? addresses
+          : addresses.map((addr) => {
+              const label = store.getLabel(addr.chain, addr.address);
+              return label === undefined ? addr : { ...addr, label };
+            });
+      return asText(JSON.stringify(enriched, null, 2));
     },
 
     derive_receive_address: async (args: {
@@ -32,14 +44,19 @@ export function buildHandlers(service: PortfolioService, accounts: AccountDescri
 
     get_history: async (args: { limit?: number }): Promise<ToolResult> => {
       const txs = await service.getHistory(accounts, { limit: args.limit });
+      store?.cacheTxs(txs);
       const safe = txs.map((tx: Tx) => ({ ...tx, raw: tx.raw.toString() }));
       return asText(JSON.stringify(safe, null, 2));
     },
   };
 }
 
-export function buildTools(service: PortfolioService, accounts: AccountDescriptor[]) {
-  const handlers = buildHandlers(service, accounts);
+export function buildTools(
+  service: PortfolioService,
+  accounts: AccountDescriptor[],
+  store?: Store,
+) {
+  const handlers = buildHandlers(service, accounts, store);
 
   return [
     tool(

@@ -4,6 +4,7 @@ import type { AccountDescriptor, DerivedAddress } from '../../src/domain/account
 import type { PortfolioView, Tx } from '../../src/domain/types.js';
 import { buildHandlers, buildTools } from '../../src/mcp/tools.js';
 import type { PortfolioService } from '../../src/services/portfolio-service.js';
+import type { Store } from '../../src/db/store.js';
 
 const accounts: AccountDescriptor[] = [
   {
@@ -108,5 +109,44 @@ describe('buildTools', () => {
   it('wraps the 4 handlers into SDK tool definitions', () => {
     const tools = buildTools(makeFakeService(), accounts);
     expect(tools).toHaveLength(4);
+  });
+});
+
+describe('buildHandlers — store-wired (labels + tx cache)', () => {
+  it('attaches labels in list_addresses and write-through caches in get_history', async () => {
+    let cachedCount = -1;
+    const fakeStore = {
+      getLabel: (_chain: string, address: string) =>
+        address === 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu' ? 'cold-storage' : undefined,
+      cacheTxs: (txs: Tx[]) => {
+        cachedCount = txs.length;
+      },
+    } as unknown as Store;
+
+    const handlers = buildHandlers(makeFakeService(), accounts, fakeStore);
+
+    // still exactly the four read-only handlers
+    expect(Object.keys(handlers).sort()).toEqual([
+      'derive_receive_address',
+      'get_history',
+      'get_portfolio',
+      'list_addresses',
+    ]);
+
+    const listed = JSON.parse((await handlers.list_addresses()).content[0].text) as Array<
+      DerivedAddress & { label?: string }
+    >;
+    expect(listed[0]?.label).toBe('cold-storage');
+
+    await handlers.get_history({ limit: 10 });
+    expect(cachedCount).toBe(1);
+  });
+
+  it('omits labels and skips caching when no store is provided (backward-compatible)', async () => {
+    const handlers = buildHandlers(makeFakeService(), accounts);
+    const listed = JSON.parse((await handlers.list_addresses()).content[0].text) as Array<
+      DerivedAddress & { label?: string }
+    >;
+    expect(listed[0]).not.toHaveProperty('label');
   });
 });

@@ -320,7 +320,12 @@ export class SolanaAdapter implements ChainAdapter {
     }
 
     return txs
-      .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+      .sort((a, b) => {
+        // Unconfirmed txs (no blockTime) are the newest — sort them to the top.
+        const ta = a.timestamp ?? Number.POSITIVE_INFINITY;
+        const tb = b.timestamp ?? Number.POSITIVE_INFINITY;
+        return ta === tb ? 0 : tb - ta;
+      })
       .slice(0, limit);
   }
 }
