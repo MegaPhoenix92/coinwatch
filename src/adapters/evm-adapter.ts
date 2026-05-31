@@ -1,11 +1,12 @@
 import type {
   ChainAdapter,
   EvmDataProvider,
+  EvmRawTransfer,
   ReceiveAddress,
 } from './chain-adapter.js';
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
-import { EVM_CHAINS, type EvmChain } from '../domain/chains.js';
-import { nativeAsset, tokensForChain } from '../domain/assets.js';
+import { EVM_CHAINS, type Chain, type EvmChain } from '../domain/chains.js';
+import { assetBySymbol, nativeAsset, tokensForChain, type AssetSymbol } from '../domain/assets.js';
 import type { Balance, HistoryOptions, Tx } from '../domain/types.js';
 
 const RECEIVE_NOTE =
@@ -13,6 +14,95 @@ const RECEIVE_NOTE =
 
 function isEvmChain(chain: string): chain is EvmChain {
   return (EVM_CHAINS as readonly string[]).includes(chain);
+}
+
+interface TransferGroup {
+  chain: EvmChain;
+  txid: string;
+  timestamp?: number;
+  symbol: AssetSymbol;
+  decimals: number;
+  incoming: bigint;
+  outgoing: bigint;
+  externalFrom?: string;
+  externalTo?: string;
+}
+
+function symbolForTransfer(chain: Chain, transfer: EvmRawTransfer): AssetSymbol | undefined {
+  const native = nativeAsset(chain);
+  if (transfer.asset.toLowerCase() === native.symbol.toLowerCase()) {
+    return native.symbol;
+  }
+
+  const token = tokensForChain(chain).find((candidate) => {
+    return (
+      candidate.symbol.toLowerCase() === transfer.asset.toLowerCase() ||
+      candidate.address?.toLowerCase() === transfer.asset.toLowerCase()
+    );
+  });
+  return token?.symbol;
+}
+
+function decimalsForTransfer(chain: Chain, symbol: AssetSymbol): number {
+  const asset = assetBySymbol(chain, symbol);
+  if (asset === undefined) {
+    throw new Error(`No asset registered for ${symbol} on ${chain}`);
+  }
+  return asset.decimals;
+}
+
+function mergeTransfer(group: TransferGroup, transfer: EvmRawTransfer, watched: Set<string>): void {
+  const from = transfer.from.toLowerCase();
+  const to = transfer.to.toLowerCase();
+  const fromWatched = watched.has(from);
+  const toWatched = watched.has(to);
+
+  if (toWatched) {
+    group.incoming += transfer.rawValue;
+  }
+  if (fromWatched) {
+    group.outgoing += transfer.rawValue;
+  }
+  if (!fromWatched) {
+    group.externalFrom ??= from;
+  }
+  if (!toWatched) {
+    group.externalTo ??= to;
+  }
+  if (transfer.timestamp !== undefined) {
+    group.timestamp = Math.max(group.timestamp ?? 0, transfer.timestamp);
+  }
+}
+
+function groupToTx(group: TransferGroup): Tx {
+  const net = group.incoming - group.outgoing;
+  let direction: Tx['direction'];
+  let counterparty: string | undefined;
+
+  if (net > 0n) {
+    direction = 'in';
+    counterparty = group.externalFrom;
+  } else if (net < 0n) {
+    direction = group.externalTo === undefined ? 'self' : 'out';
+    counterparty = group.externalTo;
+  } else {
+    direction = 'self';
+  }
+
+  const tx: Tx = {
+    chain: group.chain,
+    txid: group.txid,
+    timestamp: group.timestamp,
+    direction,
+    symbol: group.symbol,
+    raw: net < 0n ? -net : net,
+    decimals: group.decimals,
+    confirmed: true,
+  };
+  if (counterparty !== undefined) {
+    tx.counterparty = counterparty;
+  }
+  return tx;
 }
 
 export class EvmAdapter implements ChainAdapter {
@@ -103,7 +193,58 @@ export class EvmAdapter implements ChainAdapter {
     return balances;
   }
 
-  async getHistory(_addresses: DerivedAddress[], _opts?: HistoryOptions): Promise<Tx[]> {
-    return [];
+  async getHistory(addresses: DerivedAddress[], opts?: HistoryOptions): Promise<Tx[]> {
+    const limit = opts?.limit ?? 25;
+    const watched = new Set(addresses.map(({ address }) => address.toLowerCase()));
+    const groups = new Map<string, TransferGroup>();
+    const seenTransfers = new Set<string>();
+
+    for (const { address, chain } of addresses) {
+      if (!isEvmChain(chain)) {
+        continue;
+      }
+
+      const transfers = await this.provider.getTransfers(chain, address, limit);
+      for (const transfer of transfers) {
+        const symbol = symbolForTransfer(chain, transfer);
+        if (symbol === undefined) {
+          continue;
+        }
+
+        const transferKey = [
+          chain,
+          transfer.txid.toLowerCase(),
+          symbol,
+          transfer.from.toLowerCase(),
+          transfer.to.toLowerCase(),
+          transfer.rawValue.toString(),
+        ].join(':');
+        if (seenTransfers.has(transferKey)) {
+          continue;
+        }
+        seenTransfers.add(transferKey);
+
+        const key = `${chain}:${transfer.txid.toLowerCase()}:${symbol}`;
+        let group = groups.get(key);
+        if (group === undefined) {
+          group = {
+            chain,
+            txid: transfer.txid,
+            timestamp: transfer.timestamp,
+            symbol,
+            decimals: decimalsForTransfer(chain, symbol),
+            incoming: 0n,
+            outgoing: 0n,
+          };
+          groups.set(key, group);
+        }
+        mergeTransfer(group, transfer, watched);
+      }
+    }
+
+    return [...groups.values()]
+      .map(groupToTx)
+      .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+      .slice(0, limit);
   }
 }

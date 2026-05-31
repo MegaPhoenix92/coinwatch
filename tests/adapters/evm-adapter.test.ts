@@ -9,9 +9,50 @@ import type { AccountDescriptor, DerivedAddress } from '../../src/domain/account
 import type { EvmChain } from '../../src/domain/chains.js';
 
 const ADDRESS = '0x1111111111111111111111111111111111111111';
+const CHANGE_ADDRESS = '0x2222222222222222222222222222222222222222';
+const EXTERNAL_ADDRESS = '0x3333333333333333333333333333333333333333';
 const USDC_ETH = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
 
+const inboundNativeTransfer: EvmRawTransfer = {
+  txid: '0xaaa',
+  from: EXTERNAL_ADDRESS,
+  to: ADDRESS,
+  rawValue: 1_000_000_000_000_000_000n,
+  asset: 'ETH',
+  timestamp: 1700000000,
+};
+
+const outboundUsdcLeg1: EvmRawTransfer = {
+  txid: '0xbbb',
+  from: ADDRESS,
+  to: EXTERNAL_ADDRESS,
+  rawValue: 25_000_000n,
+  asset: USDC_ETH,
+  timestamp: 1700000100,
+};
+
+const outboundUsdcDuplicateFromSecondAddress: EvmRawTransfer = {
+  ...outboundUsdcLeg1,
+};
+
+const selfNativeLeg1: EvmRawTransfer = {
+  txid: '0xccc',
+  from: ADDRESS,
+  to: CHANGE_ADDRESS,
+  rawValue: 5_000_000_000_000_000n,
+  asset: 'ETH',
+  timestamp: 1700000200,
+};
+
+const selfNativeLeg2: EvmRawTransfer = {
+  ...selfNativeLeg1,
+  from: CHANGE_ADDRESS,
+  to: ADDRESS,
+};
+
 class FakeEvmProvider implements EvmDataProvider {
+  constructor(private readonly transfers: EvmRawTransfer[] = []) {}
+
   async getNativeBalance(_chain: EvmChain, _address: string): Promise<bigint> {
     return 1_000_000_000_000_000_000n;
   }
@@ -29,10 +70,13 @@ class FakeEvmProvider implements EvmDataProvider {
 
   async getTransfers(
     _chain: EvmChain,
-    _address: string,
+    address: string,
     _limit: number,
   ): Promise<EvmRawTransfer[]> {
-    return [];
+    const lower = address.toLowerCase();
+    return this.transfers.filter((transfer) => {
+      return transfer.from.toLowerCase() === lower || transfer.to.toLowerCase() === lower;
+    });
   }
 }
 
@@ -94,5 +138,74 @@ describe('EvmAdapter', () => {
     });
 
     expect(balances.some((balance) => balance.symbol === 'USDT')).toBe(false);
+  });
+
+  it('maps EVM transfer history with txid dedupe, watched-set netting, counterparty, and timestamp ordering', async () => {
+    const adapter = new EvmAdapter(
+      new FakeEvmProvider([
+        inboundNativeTransfer,
+        outboundUsdcLeg1,
+        outboundUsdcDuplicateFromSecondAddress,
+        selfNativeLeg1,
+        selfNativeLeg2,
+      ]),
+    );
+    const addresses: DerivedAddress[] = [
+      { address: ADDRESS, chain: 'ethereum', derived: false },
+      { address: CHANGE_ADDRESS, chain: 'ethereum', derived: false },
+    ];
+
+    const history = await adapter.getHistory(addresses, { limit: 10 });
+
+    expect(history).toEqual([
+      {
+        chain: 'ethereum',
+        txid: '0xccc',
+        timestamp: 1700000200,
+        direction: 'self',
+        symbol: 'ETH',
+        raw: 0n,
+        decimals: 18,
+        confirmed: true,
+      },
+      {
+        chain: 'ethereum',
+        txid: '0xbbb',
+        timestamp: 1700000100,
+        direction: 'out',
+        symbol: 'USDC',
+        raw: 25_000_000n,
+        decimals: 6,
+        counterparty: EXTERNAL_ADDRESS,
+        confirmed: true,
+      },
+      {
+        chain: 'ethereum',
+        txid: '0xaaa',
+        timestamp: 1700000000,
+        direction: 'in',
+        symbol: 'ETH',
+        raw: 1_000_000_000_000_000_000n,
+        decimals: 18,
+        counterparty: EXTERNAL_ADDRESS,
+        confirmed: true,
+      },
+    ]);
+  });
+
+  it('respects history limits after timestamp sorting', async () => {
+    const adapter = new EvmAdapter(
+      new FakeEvmProvider([inboundNativeTransfer, outboundUsdcLeg1, selfNativeLeg1]),
+    );
+    const history = await adapter.getHistory(
+      [
+        { address: ADDRESS, chain: 'ethereum', derived: false },
+        { address: CHANGE_ADDRESS, chain: 'ethereum', derived: false },
+      ],
+      { limit: 1 },
+    );
+
+    expect(history).toHaveLength(1);
+    expect(history[0]?.txid).toBe('0xccc');
   });
 });
