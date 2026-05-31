@@ -241,6 +241,16 @@ export class BitcoinAdapter implements ChainAdapter {
       if (script === undefined) {
         throw new Error(`Unable to decode bitcoin address: ${address}`);
       }
+      // Inputs are built with witnessUtxo only, which is valid for native
+      // SegWit (P2WPKH) — the only address type coinwatch derives. Legacy
+      // (P2PKH) / wrapped-SegWit (P2SH) inputs need nonWitnessUtxo/redeemScript
+      // and would otherwise produce an unsignable PSBT; reject them with a
+      // clear message instead of a cryptic @scure failure deeper in selectUTXO.
+      if (script.type !== 'wpkh') {
+        throw new Error(
+          `Phase-2 BTC transfers support only native-SegWit (bc1q / P2WPKH) watch addresses; got "${script.type}" for ${address}.`,
+        );
+      }
       const outScript = btc.OutScript.encode(script);
       for (const utxo of await this.provider.getUtxos(address)) {
         utxos.push({

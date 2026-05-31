@@ -1,4 +1,7 @@
-import { unlinkSync } from 'node:fs';
+import { readFileSync, unlinkSync } from 'node:fs';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { hex } from '@scure/base';
+import * as btc from '@scure/btc-signer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BitcoinAdapter } from '../../src/adapters/bitcoin-adapter.js';
 import type {
@@ -80,6 +83,30 @@ describe('prepare_transfer MCP handler', () => {
     expect(parsed.summary.artifactHash).toMatch(/^[0-9a-f]{64}$/);
     expect(parsed.verifyNote).toContain('Verify');
     expect(parsed.file).toMatch(/coinwatch-unsigned-btc-psbt-1700000000000\.psbt$/);
+
+    // The .psbt file is the BINARY PSBT (not base64 text); sha256(file) must equal
+    // summary.artifactHash so the user can reproduce the on-device cross-check.
+    const fileBytes = new Uint8Array(readFileSync(parsed.file));
+    expect(hex.encode(sha256(fileBytes))).toBe(parsed.summary.artifactHash);
+    expect(() => btc.Transaction.fromPSBT(fileBytes)).not.toThrow();
     unlinkSync(parsed.file);
+  });
+
+  it('rejects a malformed fee rate and writes no artifact', async () => {
+    const adapters = new Map<ChainFamily, BitcoinAdapter>([
+      ['bitcoin', new BitcoinAdapter(fakeBtcProvider)],
+    ]);
+    const service = new PortfolioService(adapters, fakePrices);
+    const handlers = buildHandlers(service, accounts);
+
+    await expect(
+      handlers.prepare_transfer({
+        accountId: 'btc',
+        to: RECIPIENT,
+        asset: 'BTC',
+        amount: '0.0005',
+        feeRate: '1.5',
+      }),
+    ).rejects.toThrow(/fee rate/i);
   });
 });

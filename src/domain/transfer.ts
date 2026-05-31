@@ -26,7 +26,7 @@ export interface TransferSummary {
   fee: string; // human decimal, in the native fee asset
   rawFee: string; // base units
   feeAsset: AssetSymbol;
-  artifactHash: string; // sha256 of the payload bytes (hex) for on-device cross-check
+  artifactHash: string; // sha256 (hex) of the canonical binary artifact; equals sha256 of the written file
 }
 
 export interface UnsignedArtifact {
@@ -47,4 +47,4 @@ export interface ChainAdapterTransferParams {
 }
 
 export const VERIFY_NOTE =
-  'Verify the destination address + amount on your signing device before signing. coinwatch never signs or broadcasts.';
+  'Verify the destination address, amount, and fee on your signing device before signing. coinwatch never signs or broadcasts.';

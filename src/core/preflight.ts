@@ -29,3 +29,25 @@ export function toBaseUnits(amount: string, decimals: number): bigint {
   }
   return BigInt(whole + frac.padEnd(decimals, '0'));
 }
+
+// Generous fat-finger ceiling for a fee rate (BTC sat/vB or EVM gwei). Real
+// rates are well under this; a larger value is almost certainly a mistake and
+// would build an artifact paying an absurd fee. selectUTXO independently
+// rejects negatives, but unvalidated BigInt() leaks raw V8 errors on
+// "1.5"/"abc" and silently turns "" into 0n (a non-relayable zero-fee tx).
+const MAX_FEE_RATE = 100_000n;
+
+/** Parse a user/agent-supplied fee-rate string into a positive bounded bigint. */
+export function parseFeeRate(raw: string): bigint {
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`Invalid fee rate "${raw}": expected a positive integer.`);
+  }
+  const feeRate = BigInt(raw);
+  if (feeRate <= 0n) {
+    throw new Error('Fee rate must be greater than zero.');
+  }
+  if (feeRate > MAX_FEE_RATE) {
+    throw new Error(`Fee rate ${feeRate} exceeds the sanity limit of ${MAX_FEE_RATE}.`);
+  }
+  return feeRate;
+}

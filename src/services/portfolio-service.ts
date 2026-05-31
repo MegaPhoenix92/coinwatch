@@ -1,5 +1,5 @@
 import type { ChainAdapter, PriceProvider, ReceiveAddress } from '../adapters/chain-adapter.js';
-import { toBaseUnits } from '../core/preflight.js';
+import { parseFeeRate, toBaseUnits } from '../core/preflight.js';
 import { value } from '../core/valuation.js';
 import { assetBySymbol } from '../domain/assets.js';
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
@@ -167,7 +167,7 @@ export class PortfolioService {
     }
 
     const rawAmount = toBaseUnits(req.amount, asset.decimals);
-    const feeRate = req.feeRate === undefined ? undefined : BigInt(req.feeRate);
+    const feeRate = req.feeRate === undefined ? undefined : parseFeeRate(req.feeRate);
     return adapter.buildUnsignedTransfer({
       account,
       chain,
