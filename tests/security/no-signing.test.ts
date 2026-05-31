@@ -10,6 +10,42 @@ import type { PortfolioService } from '../../src/services/portfolio-service.js';
 
 const execFileAsync = promisify(execFile);
 const CHECK_SCRIPT = join(process.cwd(), 'scripts/check-no-signing.mjs');
+const SOLANA_KIT_BANNED_SYMBOLS = [
+  'signTransactionMessageWithSigners',
+  'signTransactionWithSigners',
+  'partiallySignTransaction',
+  'partiallySignTransactionMessageWithSigners',
+  'partiallySignTransactionWithSigners',
+  'signAndSendTransactionMessageWithSigners',
+  'signAndSendTransactionWithSigners',
+  'sendAndConfirmDurableNonceTransactionFactory',
+  'sendAndConfirmTransactionFactory',
+  'sendTransactionWithoutConfirmingFactory',
+  'signOffchainMessageEnvelope',
+  'signOffchainMessageWithSigners',
+  'partiallySignOffchainMessageEnvelope',
+  'partiallySignOffchainMessageWithSigners',
+  'signBytes',
+  'setTransactionMessageFeePayerSigner',
+  'addSignersToInstruction',
+  'addSignersToTransactionMessage',
+  'upgradeRoleToSigner',
+  'generateKeyPair',
+  'generateKeyPairSigner',
+  'grindKeyPair',
+  'grindKeyPairs',
+  'grindKeyPairSigner',
+  'grindKeyPairSigners',
+  'createKeyPairFromBytes',
+  'createKeyPairFromPrivateKeyBytes',
+  'createKeyPairSignerFromBytes',
+  'createKeyPairSignerFromPrivateKeyBytes',
+  'createSignerFromKeyPair',
+  'createPrivateKeyFromBytes',
+  'getPublicKeyFromPrivateKey',
+  'writeKeyPair',
+  'writeKeyPairSigner',
+] as const;
 
 const accounts: AccountDescriptor[] = [
   {
@@ -106,5 +142,71 @@ describe('no-signing gate - Phase 2 construction is allowed, signing still banne
     await expect(execFileAsync(process.execPath, [CHECK_SCRIPT, bad])).rejects.toMatchObject({
       stderr: expect.stringContaining('.sign('),
     });
+  });
+
+  it('flags @solana/kit signing, signer attachment, and keypair primitives', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'cw-solana-gate-'));
+    const fixture = join(dir, 'bad-solana-kit.ts');
+    await writeFile(
+      fixture,
+      SOLANA_KIT_BANNED_SYMBOLS.map(
+        (symbol) => `export function ${symbol}Probe() { return ${symbol}(); }`,
+      ).join('\n'),
+      'utf8',
+    );
+
+    await expect(execFileAsync(process.execPath, [CHECK_SCRIPT, fixture])).rejects.toMatchObject({
+      stderr: expect.stringContaining('coinwatch no-signing gate failed'),
+    });
+    let stderr = '';
+    try {
+      await execFileAsync(process.execPath, [CHECK_SCRIPT, fixture]);
+    } catch (error) {
+      stderr = (error as { stderr?: string }).stderr ?? '';
+    }
+    for (const symbol of SOLANA_KIT_BANNED_SYMBOLS) {
+      expect(stderr).toContain(symbol);
+    }
+  });
+
+  it('flags viem/accounts signing + key/HD-seed/mnemonic creation primitives', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'cw-viem-gate-'));
+    const fixture = join(dir, 'bad-viem-seed.ts');
+    // Each line is a real bypass primitive that previously passed the gate green:
+    // standalone viem/accounts signers + key/mnemonic/HD-seed creation, plus the
+    // @scure/bip32 HDKey static keygen methods. The gate is a text scanner, so the
+    // fixture need not typecheck — only the call-site text must be flagged.
+    const dangerousCallSites = [
+      'const a = generatePrivateKey();',
+      'const b = sign({ hash, privateKey });',
+      'const c = signAuthorization({});',
+      'const d = mnemonicToAccount(phrase);',
+      'const e = hdKeyToAccount({});',
+      'const f = generateMnemonic();',
+      'const g = mnemonicToSeedSync(phrase);',
+      'const h = HDKey.fromMasterSeed(seed);',
+      'const i = HDKey.fromJSON(json);',
+    ];
+    await writeFile(fixture, dangerousCallSites.join('\n'), 'utf8');
+
+    let stderr = '';
+    try {
+      await execFileAsync(process.execPath, [CHECK_SCRIPT, fixture]);
+    } catch (error) {
+      stderr = (error as { stderr?: string }).stderr ?? '';
+    }
+    for (const needle of [
+      'generatePrivateKey(',
+      'sign(',
+      'signAuthorization(',
+      'mnemonicToAccount(',
+      'hdKeyToAccount(',
+      'generateMnemonic(',
+      'mnemonicToSeedSync(',
+      'HDKey.fromMasterSeed(',
+      'HDKey.fromJSON(',
+    ]) {
+      expect(stderr).toContain(needle);
+    }
   });
 });
