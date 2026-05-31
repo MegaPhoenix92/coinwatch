@@ -75,6 +75,18 @@ const fakeEvmProvider: EvmDataProvider = {
       },
     ];
   },
+  async getTransactionCount(): Promise<number> {
+    return 0;
+  },
+  async estimateGas(): Promise<bigint> {
+    return 21_000n;
+  },
+  async getFeesPerGas(): Promise<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }> {
+    return { maxFeePerGas: 30_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n };
+  },
+  getChainId(): number {
+    return 1;
+  },
 };
 
 const fakeSolProvider: SolDataProvider = {

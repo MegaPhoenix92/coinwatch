@@ -7,6 +7,7 @@ import {
 import { arbitrum, base, mainnet, optimism, polygon } from 'viem/chains';
 import type {
   EvmDataProvider,
+  EvmGasEstimateRequest,
   EvmRawTransfer,
   EvmTokenBalance,
 } from '../adapters/chain-adapter.js';
@@ -83,6 +84,17 @@ interface AlchemyAssetTransfersResponse {
 
 export interface ViemClient {
   getBalance(args: { address: Address }): Promise<bigint>;
+  getTransactionCount(args: { address: Address }): Promise<number>;
+  estimateGas(args: {
+    account: Address;
+    to: Address;
+    value: bigint;
+    data?: `0x${string}`;
+  }): Promise<bigint>;
+  estimateFeesPerGas(args?: { type?: 'eip1559' }): Promise<{
+    maxFeePerGas: bigint;
+    maxPriorityFeePerGas: bigint;
+  }>;
   multicall(args: {
     allowFailure: true;
     contracts: {
@@ -235,6 +247,42 @@ export class ViemProvider implements EvmDataProvider {
       }
       throw error;
     }
+  }
+
+  async getTransactionCount(chain: EvmChain, address: string): Promise<number> {
+    return withProviderResilience(
+      () =>
+        this.clients[chain].getTransactionCount({
+          address: address.toLowerCase() as Address,
+        }),
+      this.resilience,
+    );
+  }
+
+  async estimateGas(chain: EvmChain, req: EvmGasEstimateRequest): Promise<bigint> {
+    return withProviderResilience(
+      () =>
+        this.clients[chain].estimateGas({
+          account: req.from.toLowerCase() as Address,
+          to: req.to.toLowerCase() as Address,
+          value: req.value,
+          data: req.data,
+        }),
+      this.resilience,
+    );
+  }
+
+  async getFeesPerGas(
+    chain: EvmChain,
+  ): Promise<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }> {
+    return withProviderResilience(
+      () => this.clients[chain].estimateFeesPerGas({ type: 'eip1559' }),
+      this.resilience,
+    );
+  }
+
+  getChainId(chain: EvmChain): number {
+    return VIEM_CHAINS[chain].id;
   }
 }
 

@@ -78,6 +78,22 @@ class FakeEvmProvider implements EvmDataProvider {
       return transfer.from.toLowerCase() === lower || transfer.to.toLowerCase() === lower;
     });
   }
+
+  async getTransactionCount(_chain: EvmChain, _address: string): Promise<number> {
+    return 0;
+  }
+
+  async estimateGas(): Promise<bigint> {
+    return 21_000n;
+  }
+
+  async getFeesPerGas(): Promise<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }> {
+    return { maxFeePerGas: 30_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n };
+  }
+
+  getChainId(_chain: EvmChain): number {
+    return 1;
+  }
 }
 
 const account: AccountDescriptor = {

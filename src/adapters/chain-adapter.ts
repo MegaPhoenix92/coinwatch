@@ -75,6 +75,13 @@ export interface EvmRawTransfer {
   timestamp?: number;
 }
 
+export interface EvmGasEstimateRequest {
+  from: string;
+  to: string;
+  value: bigint;
+  data?: `0x${string}`;
+}
+
 export interface EvmDataProvider {
   getNativeBalance(chain: EvmChain, address: string): Promise<bigint>;
   getTokenBalances(
@@ -83,6 +90,12 @@ export interface EvmDataProvider {
     tokenAddresses: string[],
   ): Promise<EvmTokenBalance[]>;
   getTransfers(chain: EvmChain, address: string, limit: number): Promise<EvmRawTransfer[]>;
+  getTransactionCount(chain: EvmChain, address: string): Promise<number>;
+  estimateGas(chain: EvmChain, req: EvmGasEstimateRequest): Promise<bigint>;
+  getFeesPerGas(
+    chain: EvmChain,
+  ): Promise<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }>;
+  getChainId(chain: EvmChain): number;
 }
 
 export interface SolTokenAccount {

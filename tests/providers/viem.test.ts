@@ -15,6 +15,21 @@ class FakeViemClient implements ViemClient {
     return 0n;
   }
 
+  async getTransactionCount(): Promise<number> {
+    return 7;
+  }
+
+  async estimateGas(): Promise<bigint> {
+    return 21_000n;
+  }
+
+  async estimateFeesPerGas(): Promise<{
+    maxFeePerGas: bigint;
+    maxPriorityFeePerGas: bigint;
+  }> {
+    return { maxFeePerGas: 30_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n };
+  }
+
   async multicall(): Promise<readonly []> {
     return [];
   }
@@ -155,5 +170,24 @@ describe('ViemProvider.getTransfers', () => {
     });
 
     await expect(provider.getTransfers('ethereum', ADDRESS, 25)).resolves.toEqual([]);
+  });
+
+  it('exposes read-only nonce, gas, fee, and chain-id calls for transfer construction', async () => {
+    const client = new FakeViemClient();
+    const provider = new ViemProvider({ clients: { ethereum: client } });
+
+    await expect(provider.getTransactionCount('ethereum', ADDRESS)).resolves.toBe(7);
+    await expect(
+      provider.estimateGas('ethereum', {
+        from: ADDRESS,
+        to: EXTERNAL,
+        value: 1n,
+      }),
+    ).resolves.toBe(21_000n);
+    await expect(provider.getFeesPerGas('ethereum')).resolves.toEqual({
+      maxFeePerGas: 30_000_000_000n,
+      maxPriorityFeePerGas: 1_000_000_000n,
+    });
+    expect(provider.getChainId('ethereum')).toBe(1);
   });
 });

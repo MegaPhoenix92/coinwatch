@@ -31,6 +31,20 @@ const transferParams: ChainAdapterTransferParams = {
   rawAmount: 1000n,
 };
 
+const evmTransferParams: ChainAdapterTransferParams = {
+  account: {
+    id: 'acct-evm',
+    label: 'EVM',
+    family: 'evm',
+    chains: ['ethereum'],
+    source: { kind: 'addresses', addresses: ['0x0000000000000000000000000000000000000001'] },
+  },
+  chain: 'ethereum',
+  to: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+  asset: 'ETH',
+  rawAmount: 1_000_000_000_000_000n,
+};
+
 const fakeBtcProvider: BtcDataProvider = {
   async getAddress(address) {
     return {
@@ -56,6 +70,18 @@ const fakeEvmProvider: EvmDataProvider = {
   },
   async getTransfers() {
     return [];
+  },
+  async getTransactionCount() {
+    return 0;
+  },
+  async estimateGas() {
+    return 21_000n;
+  },
+  async getFeesPerGas() {
+    return { maxFeePerGas: 30_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n };
+  },
+  getChainId() {
+    return 1;
   },
 };
 
@@ -105,23 +131,23 @@ describe('transfer construction seam', () => {
     expect(artifact.summary.rawAmount).toBe(transferParams.rawAmount.toString());
   });
 
-  it('reports BTC preparation as available while later chain implementations remain unavailable', async () => {
+  it('reports BTC and EVM preparation as available while later chain implementations remain unavailable', async () => {
     const bitcoin = new BitcoinAdapter(fakeBtcProvider);
     expect(bitcoin.capabilities.preparesTransfers).toBe(true);
     await expect(bitcoin.buildUnsignedTransfer(transferParams)).rejects.toThrow(
       'No spendable UTXOs for this bitcoin account.',
     );
 
-    const unavailable = [
-      new EvmAdapter(fakeEvmProvider),
-      new SolanaAdapter(fakeSolProvider),
-    ];
+    const evm = new EvmAdapter(fakeEvmProvider);
+    expect(evm.capabilities.preparesTransfers).toBe(true);
+    await expect(evm.buildUnsignedTransfer(evmTransferParams)).resolves.toMatchObject({
+      kind: 'evm-eip1559',
+    });
 
-    for (const adapter of unavailable) {
-      expect(adapter.capabilities.preparesTransfers).toBe(false);
-      await expect(adapter.buildUnsignedTransfer(transferParams)).rejects.toThrow(
-        'buildUnsignedTransfer not implemented for this chain yet',
-      );
-    }
+    const solana = new SolanaAdapter(fakeSolProvider);
+    expect(solana.capabilities.preparesTransfers).toBe(false);
+    await expect(solana.buildUnsignedTransfer(transferParams)).rejects.toThrow(
+      'buildUnsignedTransfer not implemented for this chain yet',
+    );
   });
 });

@@ -73,6 +73,18 @@ describe('ChainAdapter contract', () => {
       async getTransfers(_chain, _address, _limit) {
         return [];
       },
+      async getTransactionCount(_chain, _address) {
+        return 0;
+      },
+      async estimateGas(_chain, _req) {
+        return 21_000n;
+      },
+      async getFeesPerGas(_chain) {
+        return { maxFeePerGas: 30_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n };
+      },
+      getChainId(_chain) {
+        return 1;
+      },
     };
     const sol: SolDataProvider = {
       async getLamports(_address) {
