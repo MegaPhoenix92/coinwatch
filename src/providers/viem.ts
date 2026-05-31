@@ -11,6 +11,7 @@ import type {
   EvmTokenBalance,
 } from '../adapters/chain-adapter.js';
 import type { EvmChain } from '../domain/chains.js';
+import { type ProviderResilienceConfig, withProviderResilience } from './resilience.js';
 
 const VIEM_CHAINS = {
   ethereum: mainnet,
@@ -43,6 +44,7 @@ export interface ViemProviderOptions {
   rpcUrls?: EvmRpcUrls;
   alchemyApiKey?: string;
   clients?: Partial<Record<EvmChain, ViemClient>>;
+  resilience?: ProviderResilienceConfig;
 }
 
 interface AlchemyAssetTransfersParams {
@@ -99,10 +101,12 @@ export interface ViemClient {
 export class ViemProvider implements EvmDataProvider {
   private readonly clients: Record<EvmChain, ViemClient>;
   private readonly hasAlchemy: boolean;
+  private readonly resilience: ProviderResilienceConfig;
 
   constructor(options: ViemProviderOptions = {}) {
     const rpcUrls = buildRpcUrls(options.alchemyApiKey, options.rpcUrls);
     this.hasAlchemy = options.alchemyApiKey !== undefined && options.alchemyApiKey.length > 0;
+    this.resilience = options.resilience ?? {};
     this.clients = {
       ethereum: options.clients?.ethereum ?? createPublicClient({
         chain: VIEM_CHAINS.ethereum,
@@ -128,7 +132,10 @@ export class ViemProvider implements EvmDataProvider {
   }
 
   async getNativeBalance(chain: EvmChain, address: string): Promise<bigint> {
-    return this.clients[chain].getBalance({ address: address.toLowerCase() as Address });
+    return withProviderResilience(
+      () => this.clients[chain].getBalance({ address: address.toLowerCase() as Address }),
+      this.resilience,
+    );
   }
 
   async getTokenBalances(
@@ -141,15 +148,19 @@ export class ViemProvider implements EvmDataProvider {
     }
 
     const lowerTokens = tokenAddresses.map((tokenAddress) => tokenAddress.toLowerCase());
-    const results = await this.clients[chain].multicall({
-      allowFailure: true,
-      contracts: lowerTokens.map((tokenAddress) => ({
-        address: tokenAddress as Address,
-        abi: erc20Abi,
-        functionName: 'balanceOf',
-        args: [address.toLowerCase() as Address],
-      })),
-    });
+    const results = await withProviderResilience(
+      () =>
+        this.clients[chain].multicall({
+          allowFailure: true,
+          contracts: lowerTokens.map((tokenAddress) => ({
+            address: tokenAddress as Address,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [address.toLowerCase() as Address],
+          })),
+        }),
+      this.resilience,
+    );
 
     return lowerTokens.map((tokenAddress, index) => {
       const result = results[index];
@@ -184,14 +195,22 @@ export class ViemProvider implements EvmDataProvider {
 
     try {
       const [sent, received] = await Promise.all([
-        this.clients[chain].request({
-          method: 'alchemy_getAssetTransfers',
-          params: [{ ...baseParams, fromAddress: lowerAddress }],
-        }),
-        this.clients[chain].request({
-          method: 'alchemy_getAssetTransfers',
-          params: [{ ...baseParams, toAddress: lowerAddress }],
-        }),
+        withProviderResilience(
+          () =>
+            this.clients[chain].request({
+              method: 'alchemy_getAssetTransfers',
+              params: [{ ...baseParams, fromAddress: lowerAddress }],
+            }),
+          this.resilience,
+        ),
+        withProviderResilience(
+          () =>
+            this.clients[chain].request({
+              method: 'alchemy_getAssetTransfers',
+              params: [{ ...baseParams, toAddress: lowerAddress }],
+            }),
+          this.resilience,
+        ),
       ]);
 
       const byUniqueId = new Map<string, EvmRawTransfer>();

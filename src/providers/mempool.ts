@@ -3,25 +3,64 @@ import type {
   MempoolAddressResponse,
   MempoolTx,
 } from '../adapters/chain-adapter.js';
+import {
+  HttpStatusError,
+  type ProviderResilienceConfig,
+  withProviderResilience,
+} from './resilience.js';
 
 const MEMPOOL_BASE = 'https://mempool.space/api';
 
+export interface MempoolProviderOptions {
+  fetchFn?: typeof fetch;
+  resilience?: ProviderResilienceConfig;
+}
+
 export class MempoolProvider implements BtcDataProvider {
-  constructor(private readonly baseUrl: string = MEMPOOL_BASE) {}
+  private readonly fetchFn: typeof fetch;
+  private readonly resilience: ProviderResilienceConfig;
+
+  constructor(
+    private readonly baseUrl: string = MEMPOOL_BASE,
+    opts: MempoolProviderOptions = {},
+  ) {
+    this.fetchFn = opts.fetchFn ?? fetch;
+    this.resilience = opts.resilience ?? {};
+  }
 
   async getAddress(address: string): Promise<MempoolAddressResponse> {
-    const res = await fetch(`${this.baseUrl}/address/${address}`);
-    if (!res.ok) {
-      throw new Error(`mempool getAddress failed: ${res.status} ${res.statusText}`);
-    }
+    const res = await withProviderResilience(
+      async (signal) => {
+        const response = await this.fetchFn(`${this.baseUrl}/address/${address}`, { signal });
+        if (!response.ok) {
+          throw new HttpStatusError(
+            'mempool getAddress failed',
+            response.status,
+            response.statusText,
+          );
+        }
+        return response;
+      },
+      this.resilience,
+    );
     return (await res.json()) as MempoolAddressResponse;
   }
 
   async getAddressTxs(address: string): Promise<MempoolTx[]> {
-    const res = await fetch(`${this.baseUrl}/address/${address}/txs`);
-    if (!res.ok) {
-      throw new Error(`mempool getAddressTxs failed: ${res.status} ${res.statusText}`);
-    }
+    const res = await withProviderResilience(
+      async (signal) => {
+        const response = await this.fetchFn(`${this.baseUrl}/address/${address}/txs`, { signal });
+        if (!response.ok) {
+          throw new HttpStatusError(
+            'mempool getAddressTxs failed',
+            response.status,
+            response.statusText,
+          );
+        }
+        return response;
+      },
+      this.resilience,
+    );
     return (await res.json()) as MempoolTx[];
   }
 }

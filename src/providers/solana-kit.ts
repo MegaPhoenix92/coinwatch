@@ -5,6 +5,7 @@ import type {
   SolRawTx,
   SolTokenAccount,
 } from '../adapters/chain-adapter.js';
+import { type ProviderResilienceConfig, withProviderResilience } from './resilience.js';
 
 const DEFAULT_SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
 
@@ -104,32 +105,42 @@ function parseTransaction(signature: string, tx: RpcTransaction): SolRawTx | und
 
 export class SolanaKitProvider implements SolDataProvider {
   private readonly rpc: ReturnType<typeof createSolanaRpc>;
+  private readonly resilience: ProviderResilienceConfig;
 
-  constructor(rpcUrl = DEFAULT_SOLANA_RPC) {
+  constructor(rpcUrl = DEFAULT_SOLANA_RPC, resilience: ProviderResilienceConfig = {}) {
     this.rpc = createSolanaRpc(rpcUrl);
+    this.resilience = resilience;
   }
 
   async getLamports(addr: string): Promise<bigint> {
-    const res = await this.rpc.getBalance(address(addr)).send();
+    const res = await withProviderResilience(
+      () => this.rpc.getBalance(address(addr)).send(),
+      this.resilience,
+    );
     return BigInt(res.value);
   }
 
   async getTokenAccounts(addr: string, programId: string): Promise<SolTokenAccount[]> {
-    const res = await this.rpc
-      .getTokenAccountsByOwner(
-        address(addr),
-        { programId: address(programId) },
-        { encoding: 'jsonParsed' },
-      )
-      .send();
+    const res = await withProviderResilience(
+      () =>
+        this.rpc
+          .getTokenAccountsByOwner(
+            address(addr),
+            { programId: address(programId) },
+            { encoding: 'jsonParsed' },
+          )
+          .send(),
+      this.resilience,
+    );
 
     return (res.value as readonly ParsedTokenAccountEntry[]).map(parseTokenAccount);
   }
 
   async getSignatures(addr: string, limit: number): Promise<SolRawTx[]> {
-    const res = await this.rpc
-      .getSignaturesForAddress(address(addr), { limit })
-      .send();
+    const res = await withProviderResilience(
+      () => this.rpc.getSignaturesForAddress(address(addr), { limit }).send(),
+      this.resilience,
+    );
 
     return res.map((sig) => ({
       signature: String(sig.signature),
@@ -139,17 +150,24 @@ export class SolanaKitProvider implements SolDataProvider {
   }
 
   async getTransaction(signature: string): Promise<SolRawTx | undefined> {
-    const tx = await this.rpc
-      .getTransaction(signature as Signature, {
-        encoding: 'jsonParsed',
-        maxSupportedTransactionVersion: 0,
-      })
-      .send();
+    const tx = await withProviderResilience(
+      () =>
+        this.rpc
+          .getTransaction(signature as Signature, {
+            encoding: 'jsonParsed',
+            maxSupportedTransactionVersion: 0,
+          })
+          .send(),
+      this.resilience,
+    );
 
     return tx === null ? undefined : parseTransaction(signature, tx as RpcTransaction);
   }
 }
 
-export function createSolanaKitProvider(rpcUrl?: string): SolDataProvider {
-  return new SolanaKitProvider(rpcUrl);
+export function createSolanaKitProvider(
+  rpcUrl?: string,
+  resilience?: ProviderResilienceConfig,
+): SolDataProvider {
+  return new SolanaKitProvider(rpcUrl, resilience);
 }

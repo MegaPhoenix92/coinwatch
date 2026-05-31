@@ -115,10 +115,15 @@ describe('MempoolProvider', () => {
 
     await expect(provider.getAddress(ADDRESS)).resolves.toMatchObject({ address: ADDRESS });
     await expect(provider.getAddressTxs(ADDRESS)).resolves.toHaveLength(1);
-    expect(fakeFetch).toHaveBeenNthCalledWith(1, `https://mempool.fixture/api/address/${ADDRESS}`);
+    expect(fakeFetch).toHaveBeenNthCalledWith(
+      1,
+      `https://mempool.fixture/api/address/${ADDRESS}`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(fakeFetch).toHaveBeenNthCalledWith(
       2,
       `https://mempool.fixture/api/address/${ADDRESS}/txs`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 });
