@@ -309,10 +309,18 @@ export class EvmAdapter implements ChainAdapter {
     }
 
     const nonce = await this.provider.getTransactionCount(params.chain, lowerFrom);
-    const fees =
-      params.feeRate === undefined
-        ? await this.provider.getFeesPerGas(params.chain)
-        : { maxFeePerGas: params.feeRate, maxPriorityFeePerGas: params.feeRate / 2n };
+    let fees: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint };
+    if (params.feeRate === undefined) {
+      fees = await this.provider.getFeesPerGas(params.chain);
+    } else {
+      // The feeRate override is in gwei (per the TransferRequest contract), but
+      // EIP-1559 maxFeePerGas/maxPriorityFeePerGas are wei — convert (×1e9).
+      // Without this the override is consumed as wei (~1e9× too low → an
+      // unincludable tx). NOTE: do NOT push this into parseFeeRate, which is
+      // shared with BTC where feeRate is sat/vB and used directly.
+      const maxFeePerGas = params.feeRate * 1_000_000_000n;
+      fees = { maxFeePerGas, maxPriorityFeePerGas: maxFeePerGas / 2n };
+    }
     const gas = await this.provider.estimateGas(params.chain, {
       from: lowerFrom,
       to,

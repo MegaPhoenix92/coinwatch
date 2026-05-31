@@ -135,4 +135,26 @@ describe('EvmAdapter.buildUnsignedTransfer', () => {
       feeAsset: 'ETH',
     });
   });
+
+  it('treats the feeRate override as gwei and converts it to wei', async () => {
+    const provider = new FakeEvmProvider();
+    const adapter = new EvmAdapter(provider);
+
+    const artifact = await adapter.buildUnsignedTransfer({
+      account,
+      chain: 'ethereum',
+      to: TO,
+      asset: 'ETH',
+      rawAmount: 1_000_000_000_000_000n,
+      feeRate: 30n, // 30 gwei
+    });
+
+    const parsed = parseTransaction(artifact.payload as `0x${string}`);
+    // 30 gwei -> 30e9 wei (NOT 30 wei). Priority = max / 2.
+    expect(parsed.maxFeePerGas).toBe(30_000_000_000n);
+    expect(parsed.maxPriorityFeePerGas).toBe(15_000_000_000n);
+    // rawFee = gas (21_000 native) * maxFeePerGas (30 gwei in wei).
+    expect(artifact.summary.rawFee).toBe((21_000n * 30_000_000_000n).toString());
+    expectUnsigned(parsed);
+  });
 });
