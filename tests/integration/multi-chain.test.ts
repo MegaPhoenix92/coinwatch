@@ -73,6 +73,12 @@ const fakeSolProvider: SolDataProvider = {
   async getTransaction(): Promise<SolRawTx | undefined> {
     return undefined;
   },
+  async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }> {
+    return {
+      blockhash: '11111111111111111111111111111111',
+      lastValidBlockHeight: 123n,
+    };
+  },
 };
 
 const fakePrices: PriceProvider = {

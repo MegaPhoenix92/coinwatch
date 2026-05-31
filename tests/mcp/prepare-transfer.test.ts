@@ -1,10 +1,11 @@
 import { readFileSync, unlinkSync } from 'node:fs';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { hex } from '@scure/base';
+import { base64, hex } from '@scure/base';
 import * as btc from '@scure/btc-signer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BitcoinAdapter } from '../../src/adapters/bitcoin-adapter.js';
 import { EvmAdapter } from '../../src/adapters/evm-adapter.js';
+import { SolanaAdapter } from '../../src/adapters/solana-adapter.js';
 import type {
   BtcDataProvider,
   BtcUtxo,
@@ -16,6 +17,9 @@ import type {
   MempoolAddressResponse,
   MempoolTx,
   PriceProvider,
+  SolDataProvider,
+  SolRawTx,
+  SolTokenAccount,
 } from '../../src/adapters/chain-adapter.js';
 import type { EvmChain } from '../../src/domain/chains.js';
 import type { AccountDescriptor } from '../../src/domain/account.js';
@@ -27,6 +31,8 @@ const WATCHED = 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu';
 const RECIPIENT = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
 const EVM_FROM = '0x0000000000000000000000000000000000000001';
 const EVM_TO = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
+const SOL_FROM = '11111111111111111111111111111112';
+const SOL_TO = '11111111111111111111111111111113';
 
 const accounts: AccountDescriptor[] = [
   {
@@ -42,6 +48,13 @@ const accounts: AccountDescriptor[] = [
     family: 'evm',
     chains: ['ethereum'],
     source: { kind: 'addresses', addresses: [EVM_FROM] },
+  },
+  {
+    id: 'sol',
+    label: 'SOL',
+    family: 'solana',
+    chains: ['solana'],
+    source: { kind: 'addresses', addresses: [SOL_FROM] },
   },
 ];
 
@@ -82,6 +95,24 @@ const fakeEvmProvider: EvmDataProvider = {
   },
   getChainId(): number {
     return 1;
+  },
+};
+
+const fakeSolProvider: SolDataProvider = {
+  async getLamports(): Promise<bigint> {
+    return 0n;
+  },
+  async getTokenAccounts(): Promise<SolTokenAccount[]> {
+    return [];
+  },
+  async getSignatures(): Promise<SolRawTx[]> {
+    return [];
+  },
+  async getTransaction(): Promise<SolRawTx | undefined> {
+    return undefined;
+  },
+  async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }> {
+    return { blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 123n };
   },
 };
 
@@ -181,6 +212,37 @@ describe('prepare_transfer MCP handler', () => {
     expect(hex.encode(sha256(new TextEncoder().encode(fileText)))).toBe(
       parsed.summary.artifactHash,
     );
+    unlinkSync(parsed.file);
+  });
+
+  it('writes Solana binary message bytes whose file hash matches the verification summary', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_002);
+    const adapters = new Map<ChainFamily, ChainAdapter>([
+      ['solana', new SolanaAdapter(fakeSolProvider)],
+    ]);
+    const service = new PortfolioService(adapters, fakePrices);
+    const handlers = buildHandlers(service, accounts);
+
+    const res = await handlers.prepare_transfer({
+      accountId: 'sol',
+      to: SOL_TO,
+      asset: 'SOL',
+      amount: '0.001',
+    });
+    const parsed = JSON.parse(res.content[0].text) as {
+      kind: string;
+      payload: string;
+      summary: { artifactHash: string; rawAmount: string };
+      file: string;
+    };
+
+    expect(parsed.kind).toBe('solana-message');
+    expect(parsed.summary.rawAmount).toBe('1000000');
+    expect(parsed.file).toMatch(/coinwatch-unsigned-solana-message-1700000000002\.solmsg$/);
+
+    const fileBytes = new Uint8Array(readFileSync(parsed.file));
+    expect(fileBytes).toEqual(base64.decode(parsed.payload));
+    expect(hex.encode(sha256(fileBytes))).toBe(parsed.summary.artifactHash);
     unlinkSync(parsed.file);
   });
 });

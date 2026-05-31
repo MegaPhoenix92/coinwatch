@@ -26,6 +26,7 @@
     "@scure/base": "^2.2.0",
     "@scure/bip32": "^2.2.0",
     "@scure/btc-signer": "^2.2.0",
+    "@solana-program/system": "^0.12.2",
     "@solana/kit": "^6.9.0",
     "better-sqlite3": "^12.10.0",
     "viem": "^2.51.3",

@@ -163,6 +163,17 @@ export class SolanaKitProvider implements SolDataProvider {
 
     return tx === null ? undefined : parseTransaction(signature, tx as RpcTransaction);
   }
+
+  async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }> {
+    const res = await withProviderResilience(
+      () => this.rpc.getLatestBlockhash().send(),
+      this.resilience,
+    );
+    return {
+      blockhash: String(res.value.blockhash),
+      lastValidBlockHeight: BigInt(res.value.lastValidBlockHeight),
+    };
+  }
 }
 
 export function createSolanaKitProvider(
