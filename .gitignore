@@ -15,11 +15,12 @@ docs/
 config/*.local.json
 
 # Dependencies / build / cache
-node_modules/
+node_modules
 dist/
 *.db
 *.db-*
 coinwatch.db*
+coinwatch-unsigned-*
 
 # OS
 .DS_Store

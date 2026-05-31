@@ -1,8 +1,10 @@
 import type { ChainAdapter, PriceProvider, ReceiveAddress } from '../adapters/chain-adapter.js';
+import { parseFeeRate, toBaseUnits } from '../core/preflight.js';
 import { value } from '../core/valuation.js';
 import { assetBySymbol } from '../domain/assets.js';
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
 import type { ChainFamily } from '../domain/chains.js';
+import type { TransferRequest, UnsignedArtifact } from '../domain/transfer.js';
 import type { Balance, HistoryOptions, PortfolioView, Tx } from '../domain/types.js';
 import type { Store } from '../db/store.js';
 
@@ -135,5 +137,44 @@ export class PortfolioService {
 
     const limit = opts?.limit;
     return typeof limit === 'number' ? merged.slice(0, limit) : merged;
+  }
+
+  async prepareTransfer(
+    accounts: AccountDescriptor[],
+    req: TransferRequest,
+  ): Promise<UnsignedArtifact> {
+    const account = accounts.find((candidate) => candidate.id === req.accountId);
+    if (account === undefined) {
+      throw new Error(`Account not found: ${req.accountId}`);
+    }
+
+    const adapter = this.adapters.get(account.family);
+    if (adapter === undefined) {
+      throw new Error(`No adapter for family ${account.family}`);
+    }
+    if (!adapter.capabilities.preparesTransfers) {
+      throw new Error(`${account.family} transfers are not available.`);
+    }
+
+    const chain = req.chain ?? account.chains[0];
+    if (chain === undefined) {
+      throw new Error(`No chain for account ${req.accountId}.`);
+    }
+
+    const asset = assetBySymbol(chain, req.asset);
+    if (asset === undefined) {
+      throw new Error(`Asset ${req.asset} is not available on ${chain}.`);
+    }
+
+    const rawAmount = toBaseUnits(req.amount, asset.decimals);
+    const feeRate = req.feeRate === undefined ? undefined : parseFeeRate(req.feeRate);
+    return adapter.buildUnsignedTransfer({
+      account,
+      chain,
+      to: req.to,
+      asset: req.asset,
+      rawAmount,
+      feeRate,
+    });
   }
 }

@@ -65,10 +65,22 @@ export class MempoolProvider implements BtcDataProvider {
     return (await res.json()) as MempoolTx[];
   }
 
-  async getUtxos(_address: string): Promise<BtcUtxo[]> {
-    // Real UTXO fetching lands in Phase-2 BTC slice (P2-2). Throw rather than
-    // return [] so an accidental early caller fails loud instead of silently
-    // reporting "no spendable funds". (gemini-code-assist PR #88, MEDIUM)
-    throw new Error('getUtxos not implemented yet');
+  async getUtxos(address: string): Promise<BtcUtxo[]> {
+    const res = await withProviderResilience(
+      async (signal) => {
+        const response = await this.fetchFn(`${this.baseUrl}/address/${address}/utxo`, { signal });
+        if (!response.ok) {
+          throw new HttpStatusError(
+            'mempool getUtxos failed',
+            response.status,
+            response.statusText,
+          );
+        }
+        return response;
+      },
+      this.resilience,
+    );
+    const utxos = (await res.json()) as Array<BtcUtxo & { status?: unknown }>;
+    return utxos.map(({ txid, vout, value }) => ({ txid, vout, value }));
   }
 }

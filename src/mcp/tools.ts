@@ -2,8 +2,11 @@ import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import type { PortfolioService } from '../services/portfolio-service.js';
 import type { AccountDescriptor } from '../domain/account.js';
+import type { AssetSymbol } from '../domain/assets.js';
+import type { Chain } from '../domain/chains.js';
 import type { Tx } from '../domain/types.js';
 import type { Store } from '../db/store.js';
+import { writeArtifactFile } from './artifact-file.js';
 
 type ToolResult = { content: { type: 'text'; text: string }[] };
 
@@ -49,6 +52,19 @@ export function buildHandlers(
       const safe = txs.map((tx: Tx) => ({ ...tx, raw: tx.raw.toString() }));
       return asText(JSON.stringify(safe, null, 2));
     },
+
+    prepare_transfer: async (args: {
+      accountId: string;
+      to: string;
+      asset: AssetSymbol;
+      amount: string;
+      chain?: Chain;
+      feeRate?: string;
+    }): Promise<ToolResult> => {
+      const artifact = await service.prepareTransfer(accounts, args);
+      const file = writeArtifactFile(artifact, `${Date.now()}`);
+      return asText(JSON.stringify({ ...artifact, file }, null, 2));
+    },
   };
 }
 
@@ -83,6 +99,29 @@ export function buildTools(
       'Return recent transactions across all configured accounts. Raw bigint amounts are serialized as decimal strings.',
       { limit: z.number().optional() },
       async (args) => handlers.get_history(args),
+    ),
+    tool(
+      'prepare_transfer',
+      'Construct an UNSIGNED transaction for an external signer, write it to a local file, and return a human-readable summary to verify on your signing device. coinwatch NEVER signs or broadcasts.',
+      {
+        accountId: z.string(),
+        to: z.string(),
+        asset: z.string(),
+        amount: z.string(),
+        chain: z.string().optional(),
+        feeRate: z.string().optional(),
+      },
+      async (args) =>
+        handlers.prepare_transfer(
+          args as {
+            accountId: string;
+            to: string;
+            asset: AssetSymbol;
+            amount: string;
+            chain?: Chain;
+            feeRate?: string;
+          },
+        ),
     ),
   ];
 }

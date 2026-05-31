@@ -36,6 +36,24 @@ const service = {
     note: 'verify on your signing device before use',
   }),
   getHistory: async () => [],
+  prepareTransfer: async () => ({
+    kind: 'btc-psbt',
+    payload: 'cHNidP8BAHECAAAAAA==',
+    summary: {
+      chain: 'bitcoin',
+      asset: 'BTC',
+      from: 'bc1qexample',
+      to: 'bc1qexample',
+      amount: '0.0005',
+      rawAmount: '50000',
+      decimals: 8,
+      fee: '0',
+      rawFee: '0',
+      feeAsset: 'BTC',
+      artifactHash: '0'.repeat(64),
+    },
+    verifyNote: 'Verify the destination address + amount on your signing device before signing.',
+  }),
 } as unknown as PortfolioService;
 
 describe('no-signing static gate', () => {
@@ -58,15 +76,16 @@ describe('no-signing static gate', () => {
     });
   });
 
-  it('exposes exactly the four read-only MCP tools', () => {
+  it('exposes exactly the five watch-only MCP tools', () => {
     const names = buildTools(service, accounts).map((tool) => tool.name).sort();
     expect(names).toEqual([
       'derive_receive_address',
       'get_history',
       'get_portfolio',
       'list_addresses',
+      'prepare_transfer',
     ]);
-    expect(names.some((name) => /sign|send|broadcast|transfer/i.test(name))).toBe(false);
+    expect(names.some((name) => /sign|broadcast/i.test(name))).toBe(false);
   });
 });
 

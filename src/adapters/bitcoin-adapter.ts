@@ -1,6 +1,15 @@
+import { sha256 } from '@noble/hashes/sha2.js';
+import { base64, hex } from '@scure/base';
+import * as btc from '@scure/btc-signer';
 import { deriveAddresses } from '../core/btc-derive.js';
+import { formatUnits } from '../core/money.js';
+import { assertSendable } from '../core/preflight.js';
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
-import type { ChainAdapterTransferParams, UnsignedArtifact } from '../domain/transfer.js';
+import {
+  VERIFY_NOTE,
+  type ChainAdapterTransferParams,
+  type UnsignedArtifact,
+} from '../domain/transfer.js';
 import type { Balance, HistoryOptions, Tx } from '../domain/types.js';
 import type {
   BtcDataProvider,
@@ -103,7 +112,7 @@ function txForWatchedSet(tx: MempoolTx, watched: Set<string>): Tx | undefined {
 
 export class BitcoinAdapter implements ChainAdapter {
   readonly family = 'bitcoin' as const;
-  readonly capabilities = { derivesAddresses: true, preparesTransfers: false } as const;
+  readonly capabilities = { derivesAddresses: true, preparesTransfers: true } as const;
 
   constructor(private readonly provider: BtcDataProvider) {}
 
@@ -206,7 +215,90 @@ export class BitcoinAdapter implements ChainAdapter {
     return typeof limit === 'number' ? history.slice(0, limit) : history;
   }
 
-  async buildUnsignedTransfer(_params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
-    throw new Error('buildUnsignedTransfer not implemented for this chain yet');
+  async buildUnsignedTransfer(params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
+    if (params.chain !== 'bitcoin') {
+      throw new Error(`BitcoinAdapter cannot prepare transfers for ${params.chain}.`);
+    }
+    if (params.asset !== 'BTC') {
+      throw new Error('Bitcoin transfers support only native BTC in Phase 2.');
+    }
+    assertSendable({ chain: 'bitcoin', asset: 'BTC', rawAmount: params.rawAmount });
+
+    const addresses = await this.resolveAddresses(params.account);
+    const watched = addresses.map((address) => address.address);
+    const changeAddress = watched[0];
+    if (changeAddress === undefined) {
+      throw new Error('No watched bitcoin address to receive change.');
+    }
+
+    const utxos: {
+      txid: Uint8Array;
+      index: number;
+      witnessUtxo: { script: Uint8Array; amount: bigint };
+    }[] = [];
+    for (const address of watched) {
+      const script = btc.Address().decode(address);
+      if (script === undefined) {
+        throw new Error(`Unable to decode bitcoin address: ${address}`);
+      }
+      // Inputs are built with witnessUtxo only, which is valid for native
+      // SegWit (P2WPKH) — the only address type coinwatch derives. Legacy
+      // (P2PKH) / wrapped-SegWit (P2SH) inputs need nonWitnessUtxo/redeemScript
+      // and would otherwise produce an unsignable PSBT; reject them with a
+      // clear message instead of a cryptic @scure failure deeper in selectUTXO.
+      if (script.type !== 'wpkh') {
+        throw new Error(
+          `Phase-2 BTC transfers support only native-SegWit (bc1q / P2WPKH) watch addresses; got "${script.type}" for ${address}.`,
+        );
+      }
+      const outScript = btc.OutScript.encode(script);
+      for (const utxo of await this.provider.getUtxos(address)) {
+        utxos.push({
+          txid: hex.decode(utxo.txid),
+          index: utxo.vout,
+          witnessUtxo: { script: outScript, amount: BigInt(utxo.value) },
+        });
+      }
+    }
+    if (utxos.length === 0) {
+      throw new Error('No spendable UTXOs for this bitcoin account.');
+    }
+
+    const outputs = [{ address: params.to, amount: params.rawAmount }];
+    const feePerByte = params.feeRate ?? 2n;
+    const selected = btc.selectUTXO(utxos, outputs, 'default', {
+      changeAddress,
+      feePerByte,
+      bip69: true,
+      createTx: true,
+    });
+    if (selected === undefined) {
+      throw new Error('Insufficient funds (incl. fee) for this bitcoin transfer.');
+    }
+    const tx = selected.tx;
+    const fee = selected.fee;
+    if (tx === undefined || fee === undefined) {
+      throw new Error('Failed to build the bitcoin transaction.');
+    }
+    const psbt = tx.toPSBT();
+
+    return {
+      kind: 'btc-psbt',
+      payload: base64.encode(psbt),
+      summary: {
+        chain: 'bitcoin',
+        asset: 'BTC',
+        from: changeAddress,
+        to: params.to,
+        amount: formatUnits(params.rawAmount, 8),
+        rawAmount: params.rawAmount.toString(),
+        decimals: 8,
+        fee: formatUnits(fee, 8),
+        rawFee: fee.toString(),
+        feeAsset: 'BTC',
+        artifactHash: hex.encode(sha256(psbt)),
+      },
+      verifyNote: VERIFY_NOTE,
+    };
   }
 }
