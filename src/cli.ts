@@ -80,8 +80,10 @@ export async function main(): Promise<void> {
   );
 
   const prices = new CoinGeckoPriceProvider({ apiKey: env.coingeckoApiKey });
-  const service = new PortfolioService(adapters, prices);
   const store = Store.open('coinwatch.db');
+  // Single cache owner: PortfolioService write-through caches tx history.
+  // The tools layer also receives the store, but only for address labels.
+  const service = new PortfolioService(adapters, prices, store);
   const server = buildServer(service, accounts, store);
 
   try {

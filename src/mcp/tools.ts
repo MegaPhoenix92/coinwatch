@@ -43,8 +43,9 @@ export function buildHandlers(
     },
 
     get_history: async (args: { limit?: number }): Promise<ToolResult> => {
+      // Caching is owned by PortfolioService.getHistory (single write-through path);
+      // the store is used here only for list_addresses labels.
       const txs = await service.getHistory(accounts, { limit: args.limit });
-      store?.cacheTxs(txs);
       const safe = txs.map((tx: Tx) => ({ ...tx, raw: tx.raw.toString() }));
       return asText(JSON.stringify(safe, null, 2));
     },

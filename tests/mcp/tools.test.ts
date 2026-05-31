@@ -112,15 +112,11 @@ describe('buildTools', () => {
   });
 });
 
-describe('buildHandlers — store-wired (labels + tx cache)', () => {
-  it('attaches labels in list_addresses and write-through caches in get_history', async () => {
-    let cachedCount = -1;
+describe('buildHandlers — store-wired (labels)', () => {
+  it('attaches store labels in list_addresses', async () => {
     const fakeStore = {
       getLabel: (_chain: string, address: string) =>
         address === 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu' ? 'cold-storage' : undefined,
-      cacheTxs: (txs: Tx[]) => {
-        cachedCount = txs.length;
-      },
     } as unknown as Store;
 
     const handlers = buildHandlers(makeFakeService(), accounts, fakeStore);
@@ -137,9 +133,6 @@ describe('buildHandlers — store-wired (labels + tx cache)', () => {
       DerivedAddress & { label?: string }
     >;
     expect(listed[0]?.label).toBe('cold-storage');
-
-    await handlers.get_history({ limit: 10 });
-    expect(cachedCount).toBe(1);
   });
 
   it('omits labels and skips caching when no store is provided (backward-compatible)', async () => {
