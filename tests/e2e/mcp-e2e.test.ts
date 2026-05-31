@@ -1,3 +1,4 @@
+import { unlinkSync } from 'node:fs';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { BitcoinAdapter } from '../../src/adapters/bitcoin-adapter.js';
@@ -51,7 +52,7 @@ const fakeBtcProvider: BtcDataProvider = {
     return [btcTx];
   },
   async getUtxos() {
-    return [];
+    return [{ txid: 'c'.repeat(64), vout: 0, value: 200_000 }];
   },
 };
 
@@ -157,7 +158,7 @@ describe('headless MCP e2e regression suite', () => {
     return { handlers: buildHandlers(service, accounts, store), store };
   }
 
-  it('exercises all four MCP handlers against the real fixture stack', async () => {
+  it('exercises all five MCP handlers against the real fixture stack', async () => {
     const { handlers, store: fixtureStore } = buildFixtureStack();
     fixtureStore.setLabel('bitcoin', BTC, 'labeled BTC vault');
 
@@ -195,6 +196,28 @@ describe('headless MCP e2e regression suite', () => {
       ]),
     );
     expect(history.every((tx) => typeof tx.raw === 'string')).toBe(true);
+
+    const prepared = parseToolText<{
+      kind: string;
+      summary: { to: string; rawAmount: string };
+      verifyNote: string;
+      file: string;
+    }>(
+      (await handlers.prepare_transfer({
+        accountId: 'btc-main',
+        to: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+        asset: 'BTC',
+        amount: '0.0005',
+      })).content[0].text,
+    );
+    expect(prepared.kind).toBe('btc-psbt');
+    expect(prepared.summary).toMatchObject({
+      to: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+      rawAmount: '50000',
+    });
+    expect(prepared.verifyNote).toContain('Verify');
+    expect(prepared.file).toMatch(/coinwatch-unsigned-btc-psbt-\d+\.psbt$/);
+    unlinkSync(prepared.file);
   });
 
   it('keeps the CLI query options locked down to coinwatch MCP tools only', () => {

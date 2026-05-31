@@ -1,6 +1,8 @@
+import { unlinkSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { ReceiveAddress } from '../../src/adapters/chain-adapter.js';
 import type { AccountDescriptor, DerivedAddress } from '../../src/domain/account.js';
+import { VERIFY_NOTE, type UnsignedArtifact } from '../../src/domain/transfer.js';
 import type { PortfolioView, Tx } from '../../src/domain/types.js';
 import { buildHandlers, buildTools } from '../../src/mcp/tools.js';
 import type { PortfolioService } from '../../src/services/portfolio-service.js';
@@ -54,22 +56,42 @@ const fakeHistory: Tx[] = [
 ];
 
 function makeFakeService(): PortfolioService {
+  const artifact: UnsignedArtifact = {
+    kind: 'btc-psbt',
+    payload: 'cHNidP8BAHECAAAAAA==',
+    summary: {
+      chain: 'bitcoin',
+      asset: 'BTC',
+      from: fakeAddresses[0].address,
+      to: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+      amount: '0.0005',
+      rawAmount: '50000',
+      decimals: 8,
+      fee: '0.000001',
+      rawFee: '100',
+      feeAsset: 'BTC',
+      artifactHash: '0'.repeat(64),
+    },
+    verifyNote: VERIFY_NOTE,
+  };
   return {
     getPortfolio: async () => fakePortfolio,
     listAddresses: async () => fakeAddresses,
     getReceiveAddress: async () => fakeReceive,
     getHistory: async () => fakeHistory,
+    prepareTransfer: async () => artifact,
   } as unknown as PortfolioService;
 }
 
 describe('buildHandlers', () => {
-  it('exposes exactly the 4 read-only handlers by name', () => {
+  it('exposes exactly the 5 watch-only handlers by name', () => {
     const handlers = buildHandlers(makeFakeService(), accounts);
     expect(Object.keys(handlers).sort()).toEqual([
       'derive_receive_address',
       'get_history',
       'get_portfolio',
       'list_addresses',
+      'prepare_transfer',
     ]);
   });
 
@@ -103,12 +125,26 @@ describe('buildHandlers', () => {
     expect(parsed[0]?.raw).toBe('50000000');
     expect(typeof parsed[0]?.raw).toBe('string');
   });
+
+  it('prepare_transfer returns an unsigned artifact summary as JSON text', async () => {
+    const handlers = buildHandlers(makeFakeService(), accounts);
+    const parsed = JSON.parse((await handlers.prepare_transfer({
+      accountId: 'acct-1',
+      to: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+      asset: 'BTC',
+      amount: '0.0005',
+    })).content[0].text) as UnsignedArtifact & { file: string };
+    expect(parsed.kind).toBe('btc-psbt');
+    expect(parsed.summary.rawAmount).toBe('50000');
+    expect(parsed.file).toMatch(/coinwatch-unsigned-btc-psbt-\d+\.psbt$/);
+    unlinkSync(parsed.file);
+  });
 });
 
 describe('buildTools', () => {
-  it('wraps the 4 handlers into SDK tool definitions', () => {
+  it('wraps the 5 handlers into SDK tool definitions', () => {
     const tools = buildTools(makeFakeService(), accounts);
-    expect(tools).toHaveLength(4);
+    expect(tools).toHaveLength(5);
   });
 });
 
@@ -121,12 +157,13 @@ describe('buildHandlers — store-wired (labels)', () => {
 
     const handlers = buildHandlers(makeFakeService(), accounts, fakeStore);
 
-    // still exactly the four read-only handlers
+    // still exactly the five watch-only handlers
     expect(Object.keys(handlers).sort()).toEqual([
       'derive_receive_address',
       'get_history',
       'get_portfolio',
       'list_addresses',
+      'prepare_transfer',
     ]);
 
     const listed = JSON.parse((await handlers.list_addresses()).content[0].text) as Array<

@@ -17,8 +17,9 @@ You supply only **public** xpubs / account descriptors / watch addresses.
 ## Status
 
 Phase 1 is implemented as a watch-only CLI agent. It reads configured public account
-descriptors, queries provider APIs through adapter seams, exposes four read-only MCP tools, and
-stores optional local labels / transaction cache entries in `coinwatch.db`.
+descriptors, queries provider APIs through adapter seams, exposes five watch-only MCP tools, and
+stores optional local labels / transaction cache entries in `coinwatch.db`. Phase 2 has started
+with BTC unsigned PSBT preparation for external signers; coinwatch still never signs or broadcasts.
 
 ## Setup
 
@@ -82,9 +83,13 @@ Start the locked-down watch-only agent REPL:
 npx tsx src/cli.ts
 ```
 
-The agent is restricted to the `mcp__coinwatch__*` namespace and exposes exactly four tools:
-`get_portfolio`, `list_addresses`, `derive_receive_address`, and `get_history`. Type `exit` or
-`quit` to close the REPL.
+The agent is restricted to the `mcp__coinwatch__*` namespace and exposes exactly five tools:
+`get_portfolio`, `list_addresses`, `derive_receive_address`, `get_history`, and
+`prepare_transfer`. Type `exit` or `quit` to close the REPL.
+
+`prepare_transfer` constructs an unsigned artifact for an external signer and writes it to a
+gitignored `coinwatch-unsigned-*` file. In this slice, BTC returns an unsigned PSBT plus a
+summary containing destination, amount, fee, and artifact hash for on-device verification.
 
 ## Phasing
 

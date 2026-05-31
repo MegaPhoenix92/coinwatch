@@ -105,14 +105,19 @@ describe('transfer construction seam', () => {
     expect(artifact.summary.rawAmount).toBe(transferParams.rawAmount.toString());
   });
 
-  it('reports transfer preparation as unavailable until chain implementations land', async () => {
-    const adapters = [
-      new BitcoinAdapter(fakeBtcProvider),
+  it('reports BTC preparation as available while later chain implementations remain unavailable', async () => {
+    const bitcoin = new BitcoinAdapter(fakeBtcProvider);
+    expect(bitcoin.capabilities.preparesTransfers).toBe(true);
+    await expect(bitcoin.buildUnsignedTransfer(transferParams)).rejects.toThrow(
+      'No spendable UTXOs for this bitcoin account.',
+    );
+
+    const unavailable = [
       new EvmAdapter(fakeEvmProvider),
       new SolanaAdapter(fakeSolProvider),
     ];
 
-    for (const adapter of adapters) {
+    for (const adapter of unavailable) {
       expect(adapter.capabilities.preparesTransfers).toBe(false);
       await expect(adapter.buildUnsignedTransfer(transferParams)).rejects.toThrow(
         'buildUnsignedTransfer not implemented for this chain yet',

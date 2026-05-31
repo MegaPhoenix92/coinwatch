@@ -20,6 +20,7 @@ dist/
 *.db
 *.db-*
 coinwatch.db*
+coinwatch-unsigned-*
 
 # OS
 .DS_Store
