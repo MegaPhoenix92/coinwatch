@@ -16,8 +16,75 @@ You supply only **public** xpubs / account descriptors / watch addresses.
 
 ## Status
 
-Planning stage — the Phase‑1 (watch‑only read MVP) design and implementation plan are complete.
-No application code yet; the read-only MVP is built next.
+Phase 1 is implemented as a watch-only CLI agent. It reads configured public account
+descriptors, queries provider APIs through adapter seams, exposes four read-only MCP tools, and
+stores optional local labels / transaction cache entries in `coinwatch.db`.
+
+## Setup
+
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Create `config/accounts.local.json`. This file is gitignored; do not commit real xpubs or
+   wallet addresses. Each entry is an `AccountDescriptor`:
+
+   ```json
+   [
+     {
+       "id": "btc-cold-1",
+       "label": "BTC Cold Storage",
+       "family": "bitcoin",
+       "chains": ["bitcoin"],
+       "source": {
+         "kind": "xpub",
+         "xpub": "zpub...",
+         "scriptType": "p2wpkh",
+         "gapLimit": 20
+       }
+     },
+     {
+       "id": "evm-1",
+       "label": "EVM Wallet",
+       "family": "evm",
+       "chains": ["ethereum", "base", "polygon", "arbitrum", "optimism"],
+       "source": { "kind": "addresses", "addresses": ["0x..."] }
+     },
+     {
+       "id": "sol-1",
+       "label": "Solana Wallet",
+       "family": "solana",
+       "chains": ["solana"],
+       "source": { "kind": "addresses", "addresses": ["..."] }
+     }
+   ]
+   ```
+
+   Bitcoin `source.kind: "xpub"` supports `scriptType` values `p2wpkh`, `p2sh-p2wpkh`, and
+   `p2pkh`. Literal watch-address sources use `{ "kind": "addresses", "addresses": [...] }`.
+
+3. Create `.env`. This file is also gitignored:
+
+   ```bash
+   ANTHROPIC_API_KEY=        # required for the Claude Agent SDK CLI agent
+   ALCHEMY_API_KEY=          # optional; enables EVM RPC and transaction history
+   HELIUS_API_KEY=           # optional; enables Helius Solana RPC
+   COINGECKO_API_KEY=        # optional; CoinGecko public tier is used if unset
+   ```
+
+## Run
+
+Start the locked-down watch-only agent REPL:
+
+```bash
+npx tsx src/cli.ts
+```
+
+The agent is restricted to the `mcp__coinwatch__*` namespace and exposes exactly four tools:
+`get_portfolio`, `list_addresses`, `derive_receive_address`, and `get_history`. Type `exit` or
+`quit` to close the REPL.
 
 ## Phasing
 
@@ -37,11 +104,25 @@ Claude Agent SDK + MCP tools.
 ## Security model
 
 1. **Watch-only by construction** — no private keys are read, stored, derived-with, or signed.
-2. **The agent is untrusted for correctness** — your signing device is the source of truth;
-   verify destination + amount on-device (Phase 2).
+   CI includes a static no-signing / no-broadcast gate over `src/`.
+2. **The agent is untrusted for correctness** — your signing device is the source of truth.
 3. **Receive addresses are unverified until confirmed on your device.**
 4. **xpubs / descriptors are privacy-sensitive** — they live only in gitignored local config,
    never committed, never logged.
+
+## Privacy runbook
+
+- Treat xpubs, descriptors, and watched addresses as privacy-sensitive. Keep them only in
+  `config/accounts.local.json` or another gitignored local config file.
+- Never commit `.env`, `config/*.local.json`, real xpubs, wallet addresses intended to stay
+  private, or provider keys.
+- Do not paste real xpubs or provider keys into issues, PRs, logs, prompts, or screenshots.
+- Data providers see the addresses you ask them about: mempool.space-compatible Bitcoin APIs,
+  Alchemy for EVM, Helius / public Solana RPC, and CoinGecko for price IDs.
+- `coinwatch.db` is local. It caches labels and public transaction records only; it never stores
+  signing keys.
+- Every receive address returned by the CLI is still unverified until you confirm it on your
+  signing device.
 
 ## License
 
