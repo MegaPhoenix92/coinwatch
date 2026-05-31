@@ -77,6 +77,9 @@ describe('ChainAdapter contract', () => {
       async getSignatures(_address, _limit) {
         return [];
       },
+      async getTransaction(_signature) {
+        return undefined;
+      },
     };
     const prices: PriceProvider = {
       async getUsdPrices(_coingeckoIds) {
