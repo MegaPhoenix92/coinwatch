@@ -89,7 +89,7 @@ export class Store {
     insertMany(txs);
   }
 
-  getCachedTxs(chain: Chain, _addressesUnused?: string[]): Tx[] {
+  getCachedTxs(chain: Chain): Tx[] {
     const rows = this.db
       .prepare('SELECT json FROM tx_cache WHERE chain = ? ORDER BY fetched_at')
       .all(chain) as TxRow[];

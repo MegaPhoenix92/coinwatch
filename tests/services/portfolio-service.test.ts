@@ -208,6 +208,148 @@ describe('PortfolioService', () => {
     store.close();
   });
 
+  it('globally orders, dedupes, and limits merged cross-chain history', async () => {
+    class HistoryAdapter implements ChainAdapter {
+      readonly capabilities = { derivesAddresses: false };
+
+      constructor(
+        readonly family: ChainFamily,
+        private readonly chain: Tx['chain'],
+        private readonly txsByAddress: Map<string, Tx[]>,
+      ) {}
+
+      async resolveAddresses(account: AccountDescriptor): Promise<DerivedAddress[]> {
+        if (account.source.kind !== 'addresses') {
+          return [];
+        }
+        return account.source.addresses.map((address) => ({
+          address,
+          chain: this.chain,
+          derived: false,
+        }));
+      }
+
+      async getReceiveAddress(_account: AccountDescriptor): Promise<ReceiveAddress> {
+        return {
+          address: 'unused',
+          derived: false,
+          note: 'verify on your signing device before use',
+        };
+      }
+
+      async getBalances(_addresses: DerivedAddress[]): Promise<Balance[]> {
+        return [];
+      }
+
+      async getHistory(addresses: DerivedAddress[]): Promise<Tx[]> {
+        return addresses.flatMap((address) => this.txsByAddress.get(address.address) ?? []);
+      }
+    }
+
+    const tx = (chain: Tx['chain'], txid: string, timestamp: number | undefined): Tx => ({
+      chain,
+      txid,
+      timestamp,
+      direction: 'in',
+      symbol: chain === 'bitcoin' ? 'BTC' : chain === 'solana' ? 'SOL' : 'ETH',
+      raw: 1n,
+      decimals: chain === 'bitcoin' ? 8 : chain === 'solana' ? 9 : 18,
+      confirmed: true,
+    });
+
+    const btcOld = tx('bitcoin', 'btc-old', 100);
+    const btcNewest = tx('bitcoin', 'btc-newest', 500);
+    const duplicate = tx('ethereum', 'evm-dupe', 400);
+    const evmMiddle = tx('ethereum', 'evm-middle', 300);
+    const solUnconfirmed = tx('solana', 'sol-unconfirmed', undefined);
+    const solRecent = tx('solana', 'sol-recent', 450);
+
+    const btcOne: AccountDescriptor = {
+      id: 'btc-one',
+      label: 'BTC one',
+      family: 'bitcoin',
+      chains: ['bitcoin'],
+      source: { kind: 'addresses', addresses: ['btc-one'] },
+    };
+    const btcTwo: AccountDescriptor = {
+      id: 'btc-two',
+      label: 'BTC two',
+      family: 'bitcoin',
+      chains: ['bitcoin'],
+      source: { kind: 'addresses', addresses: ['btc-two'] },
+    };
+    const evmOne: AccountDescriptor = {
+      id: 'evm-one',
+      label: 'EVM one',
+      family: 'evm',
+      chains: ['ethereum'],
+      source: { kind: 'addresses', addresses: ['evm-one'] },
+    };
+    const evmTwo: AccountDescriptor = {
+      id: 'evm-two',
+      label: 'EVM two',
+      family: 'evm',
+      chains: ['ethereum'],
+      source: { kind: 'addresses', addresses: ['evm-two'] },
+    };
+    const solOne: AccountDescriptor = {
+      id: 'sol-one',
+      label: 'SOL one',
+      family: 'solana',
+      chains: ['solana'],
+      source: { kind: 'addresses', addresses: ['sol-one'] },
+    };
+
+    const svc = new PortfolioService(
+      new Map<ChainFamily, ChainAdapter>([
+        [
+          'bitcoin',
+          new HistoryAdapter(
+            'bitcoin',
+            'bitcoin',
+            new Map([
+              ['btc-one', [btcOld]],
+              ['btc-two', [btcNewest]],
+            ]),
+          ),
+        ],
+        [
+          'evm',
+          new HistoryAdapter(
+            'evm',
+            'ethereum',
+            new Map([
+              ['evm-one', [duplicate, evmMiddle]],
+              ['evm-two', [{ ...duplicate, raw: 2n }]],
+            ]),
+          ),
+        ],
+        ['solana', new HistoryAdapter('solana', 'solana', new Map([['sol-one', [solRecent, solUnconfirmed]]]))],
+      ]),
+      new FakePriceProvider(),
+    );
+
+    const all = await svc.getHistory([btcOne, evmOne, solOne, btcTwo, evmTwo]);
+    expect(all.map((candidate) => `${candidate.chain}:${candidate.txid}`)).toEqual([
+      'solana:sol-unconfirmed',
+      'bitcoin:btc-newest',
+      'solana:sol-recent',
+      'ethereum:evm-dupe',
+      'ethereum:evm-middle',
+      'bitcoin:btc-old',
+    ]);
+    expect(new Set(all.map((candidate) => `${candidate.chain}:${candidate.txid}`)).size).toBe(
+      all.length,
+    );
+
+    const limited = await svc.getHistory([btcOne, evmOne, solOne, btcTwo, evmTwo], { limit: 3 });
+    expect(limited.map((candidate) => `${candidate.chain}:${candidate.txid}`)).toEqual([
+      'solana:sol-unconfirmed',
+      'bitcoin:btc-newest',
+      'solana:sol-recent',
+    ]);
+  });
+
   it('keeps history from other accounts when one adapter getHistory fails', async () => {
     const failAccount: AccountDescriptor = { ...btcAccount, id: 'acct-fail' };
     const flakyAdapter = new (class extends FakeBitcoinAdapter {
