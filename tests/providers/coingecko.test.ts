@@ -41,13 +41,62 @@ describe('CoinGeckoPriceProvider', () => {
       fetchFn: (async () =>
         ({
           ok: false,
-          status: 429,
-          statusText: 'Too Many Requests',
+          status: 400,
+          statusText: 'Bad Request',
         }) as Response) as typeof fetch,
+      resilience: { sleep: async () => undefined },
     });
 
     await expect(provider.getUsdPrices(['bitcoin'])).rejects.toThrow(
-      'CoinGecko 429: Too Many Requests',
+      'CoinGecko 400: Bad Request',
     );
+  });
+
+  it('retries retryable HTTP responses and then succeeds', async () => {
+    let calls = 0;
+    const provider = new CoinGeckoPriceProvider({
+      fetchFn: (async () => {
+        calls += 1;
+        if (calls < 3) {
+          return {
+            ok: false,
+            status: 429,
+            statusText: 'Too Many Requests',
+          } as Response;
+        }
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => ({ bitcoin: { usd: 60000 } }),
+        } as Response;
+      }) as typeof fetch,
+      resilience: { sleep: async () => undefined },
+    });
+
+    await expect(provider.getUsdPrices(['bitcoin'])).resolves.toEqual(
+      new Map([['bitcoin', 60000]]),
+    );
+    expect(calls).toBe(3);
+  });
+
+  it('bounds retries for retryable HTTP failures', async () => {
+    let calls = 0;
+    const provider = new CoinGeckoPriceProvider({
+      fetchFn: (async () => {
+        calls += 1;
+        return {
+          ok: false,
+          status: 500,
+          statusText: 'Server Error',
+        } as Response;
+      }) as typeof fetch,
+      resilience: { sleep: async () => undefined },
+    });
+
+    await expect(provider.getUsdPrices(['bitcoin'])).rejects.toThrow(
+      'CoinGecko 500: Server Error',
+    );
+    expect(calls).toBe(4);
   });
 });
