@@ -47,6 +47,53 @@ const fake: SolDataProvider = {
   },
 };
 
+function trackingSolProvider(): SolDataProvider & {
+  calls: {
+    getLamports: number;
+    getTokenAccounts: number;
+    getSignatures: number;
+    getTransaction: number;
+    getLatestBlockhash: number;
+    getAccountExists: number;
+  };
+} {
+  const calls = {
+    getLamports: 0,
+    getTokenAccounts: 0,
+    getSignatures: 0,
+    getTransaction: 0,
+    getLatestBlockhash: 0,
+    getAccountExists: 0,
+  };
+  return {
+    calls,
+    async getLamports(): Promise<bigint> {
+      calls.getLamports += 1;
+      return 0n;
+    },
+    async getTokenAccounts(): Promise<SolTokenAccount[]> {
+      calls.getTokenAccounts += 1;
+      return [];
+    },
+    async getSignatures(): Promise<SolRawTx[]> {
+      calls.getSignatures += 1;
+      return [];
+    },
+    async getTransaction(): Promise<SolRawTx | undefined> {
+      calls.getTransaction += 1;
+      return undefined;
+    },
+    async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }> {
+      calls.getLatestBlockhash += 1;
+      return { blockhash: BLOCKHASH, lastValidBlockHeight: 123n };
+    },
+    async getAccountExists(): Promise<boolean> {
+      calls.getAccountExists += 1;
+      return true;
+    },
+  };
+}
+
 describe('SolanaAdapter.buildUnsignedTransfer', () => {
   it('builds unsigned Solana message bytes for a native SOL transfer', async () => {
     const adapter = new SolanaAdapter(fake);
@@ -118,6 +165,61 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
       rawAmount: '1000000',
       decimals: 6,
       feeAsset: 'SOL',
+    });
+  });
+
+  it('rejects invalid recipients before reading provider data', async () => {
+    const provider = trackingSolProvider();
+    const adapter = new SolanaAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'solana',
+        to: 'bad sol',
+        asset: 'SOL',
+        rawAmount: 1_000_000n,
+      }),
+    ).rejects.toThrow(/Invalid solana recipient address/);
+    expect(provider.calls).toEqual({
+      getLamports: 0,
+      getTokenAccounts: 0,
+      getSignatures: 0,
+      getTransaction: 0,
+      getLatestBlockhash: 0,
+      getAccountExists: 0,
+    });
+  });
+
+  it('rejects wrong-chain and unsupported-asset requests before reading provider data', async () => {
+    const provider = trackingSolProvider();
+    const adapter = new SolanaAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'ethereum',
+        to: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+        asset: 'ETH',
+        rawAmount: 1_000_000n,
+      }),
+    ).rejects.toThrow(/cannot prepare transfers for ethereum/);
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'solana',
+        to: TO,
+        asset: 'BTC',
+        rawAmount: 1_000_000n,
+      }),
+    ).rejects.toThrow(/Asset BTC is not available on solana/);
+    expect(provider.calls).toEqual({
+      getLamports: 0,
+      getTokenAccounts: 0,
+      getSignatures: 0,
+      getTransaction: 0,
+      getLatestBlockhash: 0,
+      getAccountExists: 0,
     });
   });
 });

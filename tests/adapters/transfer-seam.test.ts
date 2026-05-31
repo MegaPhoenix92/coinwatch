@@ -26,7 +26,7 @@ const account: AccountDescriptor = {
 const transferParams: ChainAdapterTransferParams = {
   account,
   chain: 'bitcoin',
-  to: 'bc1qrecipient0000000000000000000000000000',
+  to: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
   asset: 'BTC',
   rawAmount: 1000n,
 };
@@ -124,7 +124,7 @@ describe('transfer construction seam', () => {
   it('defines transfer request and unsigned artifact types with the verification note', () => {
     const request: TransferRequest = {
       accountId: 'acct-btc',
-      to: 'bc1qrecipient0000000000000000000000000000',
+      to: transferParams.to,
       asset: 'BTC',
       amount: '0.00001',
     };

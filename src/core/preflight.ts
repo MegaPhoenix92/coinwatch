@@ -1,13 +1,19 @@
-import type { AssetSymbol } from '../domain/assets.js';
+import { assetBySymbol, type AssetSymbol } from '../domain/assets.js';
 import type { Chain } from '../domain/chains.js';
+import { assertValidRecipient } from './address-validation.js';
 
 const BTC_DUST_SAT = 546n;
 
 export function assertSendable(p: {
   chain: Chain;
   asset: AssetSymbol;
+  to: string;
   rawAmount: bigint;
 }): void {
+  if (assetBySymbol(p.chain, p.asset) === undefined) {
+    throw new Error(`Asset ${p.asset} is not available on ${p.chain}.`);
+  }
+  assertValidRecipient(p.chain, p.to);
   if (p.rawAmount <= 0n) {
     throw new Error('Transfer amount must be positive.');
   }
