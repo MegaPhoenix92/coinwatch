@@ -50,6 +50,9 @@ const fakeBtcProvider: BtcDataProvider = {
   async getAddressTxs(): Promise<MempoolTx[]> {
     return [btcTx];
   },
+  async getUtxos() {
+    return [];
+  },
 };
 
 const fakeEvmProvider: EvmDataProvider = {

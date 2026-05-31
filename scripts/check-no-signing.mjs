@@ -25,7 +25,6 @@ const FORBIDDEN = [
   { name: 'fromSecretKey', pattern: /\bfromSecretKey\b/ },
   { name: 'mnemonic', pattern: /\bmnemonic\b/i },
   { name: 'fromSeed', pattern: /\bfromSeed\b/ },
-  { name: 'buildUnsignedTransfer', pattern: /\bbuildUnsignedTransfer\b/ },
 ];
 
 function usage() {

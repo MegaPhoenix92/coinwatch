@@ -69,3 +69,23 @@ describe('no-signing static gate', () => {
     expect(names.some((name) => /sign|send|broadcast|transfer/i.test(name))).toBe(false);
   });
 });
+
+describe('no-signing gate - Phase 2 construction is allowed, signing still banned', () => {
+  it('allows buildUnsignedTransfer but flags tx.sign(', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'cw-p2-'));
+    const ok = join(dir, 'ok.ts');
+    await writeFile(ok, 'export async function buildUnsignedTransfer() { return {}; }\n', 'utf8');
+    const okRun = await execFileAsync(process.execPath, [CHECK_SCRIPT, ok]);
+    expect(okRun.stdout).toContain('coinwatch no-signing gate passed');
+
+    const bad = join(dir, 'bad.ts');
+    await writeFile(
+      bad,
+      'export function f(tx: { sign(k: unknown): void }, k: unknown) { tx.sign(k); }\n',
+      'utf8',
+    );
+    await expect(execFileAsync(process.execPath, [CHECK_SCRIPT, bad])).rejects.toMatchObject({
+      stderr: expect.stringContaining('.sign('),
+    });
+  });
+});

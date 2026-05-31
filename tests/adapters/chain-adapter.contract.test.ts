@@ -14,7 +14,7 @@ describe('ChainAdapter contract', () => {
   it('a trivial stub satisfies the ChainAdapter type and reports no derivation', async () => {
     const stub: ChainAdapter = {
       family: 'bitcoin',
-      capabilities: { derivesAddresses: false },
+      capabilities: { derivesAddresses: false, preparesTransfers: false },
       async resolveAddresses(_account: AccountDescriptor): Promise<DerivedAddress[]> {
         return [];
       },
@@ -34,9 +34,13 @@ describe('ChainAdapter contract', () => {
       async getHistory(_addresses: DerivedAddress[]): Promise<Tx[]> {
         return [];
       },
+      async buildUnsignedTransfer() {
+        throw new Error('buildUnsignedTransfer not implemented for this chain yet');
+      },
     };
 
     expect(stub.capabilities.derivesAddresses).toBe(false);
+    expect(stub.capabilities.preparesTransfers).toBe(false);
     expect(stub.family).toBe('bitcoin');
     await expect(stub.resolveAddresses({} as AccountDescriptor)).resolves.toEqual([]);
     const recv = await stub.getReceiveAddress({} as AccountDescriptor);
@@ -53,6 +57,9 @@ describe('ChainAdapter contract', () => {
         };
       },
       async getAddressTxs(_address: string) {
+        return [];
+      },
+      async getUtxos(_address: string) {
         return [];
       },
     };
