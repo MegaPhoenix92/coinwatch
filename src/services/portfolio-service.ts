@@ -121,7 +121,19 @@ export class PortfolioService {
       }
     }
 
+    const byKey = new Map<string, Tx>();
+    for (const tx of out) {
+      byKey.set(`${tx.chain}:${tx.txid}`, tx);
+    }
+
+    // Provider-side pageKey pagination is out of scope; each provider already fetches up to limit.
+    const merged = [...byKey.values()].sort((a, b) => {
+      const ta = a.timestamp ?? Number.POSITIVE_INFINITY;
+      const tb = b.timestamp ?? Number.POSITIVE_INFINITY;
+      return ta === tb ? 0 : tb - ta;
+    });
+
     const limit = opts?.limit;
-    return typeof limit === 'number' ? out.slice(0, limit) : out;
+    return typeof limit === 'number' ? merged.slice(0, limit) : merged;
   }
 }
