@@ -1,0 +1,35 @@
+{
+  "name": "coinwatch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Watch-only multi-chain crypto CLI. Holds no private keys, never signs.",
+  "type": "module",
+  "bin": {
+    "coinwatch": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/cli.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.158",
+    "@noble/hashes": "^2.2.0",
+    "@scure/base": "^2.2.0",
+    "@scure/bip32": "^2.2.0",
+    "@scure/btc-signer": "^2.2.0",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4.22.3",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.7"
+  }
+}

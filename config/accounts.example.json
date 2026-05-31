@@ -1,0 +1,34 @@
+[
+  {
+    "id": "btc-cold-1",
+    "label": "BTC Cold Storage (example)",
+    "family": "bitcoin",
+    "chains": ["bitcoin"],
+    "source": {
+      "kind": "xpub",
+      "xpub": "zpub6EXAMPLEzpubDONOTUSEreplaceWithYourOwnWatchOnlyXpub00000000000000000000000000000000000000000000000000000000",
+      "scriptType": "p2wpkh",
+      "gapLimit": 20
+    }
+  },
+  {
+    "id": "evm-hot-1",
+    "label": "EVM Wallet (example)",
+    "family": "evm",
+    "chains": ["ethereum", "base", "arbitrum"],
+    "source": {
+      "kind": "addresses",
+      "addresses": ["0x0000000000000000000000000000000000000000"]
+    }
+  },
+  {
+    "id": "sol-1",
+    "label": "Solana Wallet (example)",
+    "family": "solana",
+    "chains": ["solana"],
+    "source": {
+      "kind": "addresses",
+      "addresses": ["So11111111111111111111111111111111111111112"]
+    }
+  }
+]
