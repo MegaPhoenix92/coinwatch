@@ -132,6 +132,7 @@ export interface SolDataProvider {
   getSignatures(address: string, limit: number): Promise<SolRawTx[]>;
   getTransaction(signature: string): Promise<SolRawTx | undefined>;
   getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }>;
+  getAccountExists(address: string): Promise<boolean>;
 }
 
 export interface PriceProvider {

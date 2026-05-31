@@ -115,6 +115,9 @@ const fakeSolProvider: SolDataProvider = {
   async getLatestBlockhash() {
     return { blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 123n };
   },
+  async getAccountExists() {
+    return true;
+  },
 };
 
 describe('transfer construction seam', () => {

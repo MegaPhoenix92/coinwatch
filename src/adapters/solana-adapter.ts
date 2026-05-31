@@ -10,6 +10,14 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   type Blockhash,
 } from '@solana/kit';
+import {
+  findAssociatedTokenPda as findSplAssociatedTokenPda,
+  getTransferCheckedInstruction as getSplTransferCheckedInstruction,
+} from '@solana-program/token';
+import {
+  findAssociatedTokenPda as findToken2022AssociatedTokenPda,
+  getTransferCheckedInstruction as getToken2022TransferCheckedInstruction,
+} from '@solana-program/token-2022';
 import { getTransferSolInstruction } from '@solana-program/system';
 import type {
   ChainAdapter,
@@ -30,6 +38,7 @@ import type { Balance, HistoryOptions, Tx } from '../domain/types.js';
 import {
   SOL_TOKEN_2022_PROGRAM,
   SOL_TOKEN_PROGRAM,
+  assetBySymbol,
   nativeAsset,
   tokensForChain,
   type AssetDef,
@@ -242,6 +251,53 @@ function unknownTx(raw: SolRawTx): Tx {
   };
 }
 
+async function tokenTransferInstruction(params: {
+  provider: SolDataProvider;
+  asset: AssetDef;
+  owner: string;
+  destinationOwner: string;
+  rawAmount: bigint;
+}) {
+  if (params.asset.address === undefined) {
+    throw new Error(`Token ${params.asset.symbol} has no mint address.`);
+  }
+
+  const tokenProgramId =
+    params.asset.tokenProgram === 'token-2022' ? SOL_TOKEN_2022_PROGRAM : SOL_TOKEN_PROGRAM;
+  const tokenProgram = address(tokenProgramId);
+  const mint = address(params.asset.address);
+  const owner = address(params.owner);
+  const destinationOwner = address(params.destinationOwner);
+  const findAta =
+    params.asset.tokenProgram === 'token-2022'
+      ? findToken2022AssociatedTokenPda
+      : findSplAssociatedTokenPda;
+
+  const [source] = await findAta({ owner, mint, tokenProgram });
+  const [destination] = await findAta({ owner: destinationOwner, mint, tokenProgram });
+
+  if (!(await params.provider.getAccountExists(source))) {
+    throw new Error(`This account has no ${params.asset.symbol} token account.`);
+  }
+  if (!(await params.provider.getAccountExists(destination))) {
+    throw new Error(
+      `Recipient has no ${params.asset.symbol} token account; have them create it first - coinwatch never creates accounts.`,
+    );
+  }
+
+  const input = {
+    source,
+    mint,
+    destination,
+    authority: owner,
+    amount: params.rawAmount,
+    decimals: params.asset.decimals,
+  };
+  return params.asset.tokenProgram === 'token-2022'
+    ? getToken2022TransferCheckedInstruction(input)
+    : getSplTransferCheckedInstruction(input);
+}
+
 export class SolanaAdapter implements ChainAdapter {
   readonly family = 'solana' as const;
   readonly capabilities = { derivesAddresses: false, preparesTransfers: true } as const;
@@ -356,21 +412,30 @@ export class SolanaAdapter implements ChainAdapter {
     assertSendable({ chain: 'solana', asset: params.asset, rawAmount: params.rawAmount });
 
     const native = nativeAsset('solana');
-    if (params.asset !== native.symbol) {
-      throw new Error('Solana SPL token transfers are deferred (Phase 2.1).');
-    }
-
     const from = pubkeysOf(params.account)[0];
     if (from === undefined) {
       throw new Error('Solana account has no address.');
     }
     const feePayer = address(from);
     const { blockhash, lastValidBlockHeight } = await this.provider.getLatestBlockhash();
-    const instruction = getTransferSolInstruction({
-      source: feePayer as never,
-      destination: address(params.to),
-      amount: params.rawAmount,
-    });
+    const asset = assetBySymbol('solana', params.asset);
+    if (asset === undefined) {
+      throw new Error(`Asset ${params.asset} is not available on solana.`);
+    }
+    const instruction =
+      params.asset === native.symbol
+        ? getTransferSolInstruction({
+            source: feePayer as never,
+            destination: address(params.to),
+            amount: params.rawAmount,
+          })
+        : await tokenTransferInstruction({
+            provider: this.provider,
+            asset,
+            owner: from,
+            destinationOwner: params.to,
+            rawAmount: params.rawAmount,
+          });
 
     const message = pipe(
       createTransactionMessage({ version: 0 }),
@@ -394,9 +459,9 @@ export class SolanaAdapter implements ChainAdapter {
         asset: params.asset,
         from,
         to: params.to,
-        amount: formatUnits(params.rawAmount, native.decimals),
+        amount: formatUnits(params.rawAmount, asset.decimals),
         rawAmount: params.rawAmount.toString(),
-        decimals: native.decimals,
+        decimals: asset.decimals,
         fee: '0.000005',
         rawFee: '5000',
         feeAsset: 'SOL',
