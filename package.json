@@ -15,6 +15,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "security:no-signing": "node scripts/check-no-signing.mjs src",
+    "security:secrets": "node scripts/check-secrets.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "node dist/cli.js"
