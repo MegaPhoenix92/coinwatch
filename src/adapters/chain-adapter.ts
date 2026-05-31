@@ -83,15 +83,32 @@ export interface SolTokenAccount {
   uiAmountString: string;
 }
 
+export interface SolRawTokenBalance {
+  accountIndex: number;
+  mint: string;
+  owner?: string;
+  programId?: string;
+  amount: string;
+  decimals: number;
+}
+
 export interface SolRawTx {
   signature: string;
   blockTime?: number;
+  err?: unknown;
+  fee?: bigint;
+  accountKeys?: string[];
+  preBalances?: bigint[];
+  postBalances?: bigint[];
+  preTokenBalances?: SolRawTokenBalance[];
+  postTokenBalances?: SolRawTokenBalance[];
 }
 
 export interface SolDataProvider {
   getLamports(address: string): Promise<bigint>;
   getTokenAccounts(address: string, programId: string): Promise<SolTokenAccount[]>;
   getSignatures(address: string, limit: number): Promise<SolRawTx[]>;
+  getTransaction(signature: string): Promise<SolRawTx | undefined>;
 }
 
 export interface PriceProvider {
