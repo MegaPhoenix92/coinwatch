@@ -13,9 +13,12 @@ const EXT: Record<UnsignedArtifact['kind'], string> = {
 // BINARY blob. A `.psbt` file is binary by convention, and `summary.artifactHash`
 // is sha256 over the binary PSBT — writing the binary keeps `sha256(file)` equal
 // to `artifactHash` so the user can reproduce the on-device cross-check, and
-// matches what binary-only signers expect. EVM (0x-hex) / Solana on-disk formats
-// are decided in their own Phase-2 slices; until then they stay text.
-const BINARY_BASE64_KINDS = new Set<UnsignedArtifact['kind']>(['btc-psbt']);
+// matches what binary-only signers expect. Solana messages are also base64
+// payloads over binary message bytes, while EVM 0x-hex stays text.
+const BINARY_BASE64_KINDS = new Set<UnsignedArtifact['kind']>([
+  'btc-psbt',
+  'solana-message',
+]);
 
 /** Write the unsigned payload to ./coinwatch-unsigned-<kind>-<stamp>.<ext> (gitignored). */
 export function writeArtifactFile(

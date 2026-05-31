@@ -99,6 +99,9 @@ describe('ChainAdapter contract', () => {
       async getTransaction(_signature) {
         return undefined;
       },
+      async getLatestBlockhash() {
+        return { blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 123n };
+      },
     };
     const prices: PriceProvider = {
       async getUsdPrices(_coingeckoIds) {

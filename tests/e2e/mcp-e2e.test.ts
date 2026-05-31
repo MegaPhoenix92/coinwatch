@@ -111,6 +111,12 @@ const fakeSolProvider: SolDataProvider = {
       postTokenBalances: [],
     };
   },
+  async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }> {
+    return {
+      blockhash: '11111111111111111111111111111111',
+      lastValidBlockHeight: 123n,
+    };
+  },
 };
 
 const fakePrices: PriceProvider = {

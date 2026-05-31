@@ -1,3 +1,16 @@
+import { sha256 } from '@noble/hashes/sha2.js';
+import { base64, hex } from '@scure/base';
+import {
+  address,
+  appendTransactionMessageInstruction,
+  compileTransaction,
+  createTransactionMessage,
+  pipe,
+  setTransactionMessageFeePayer,
+  setTransactionMessageLifetimeUsingBlockhash,
+  type Blockhash,
+} from '@solana/kit';
+import { getTransferSolInstruction } from '@solana-program/system';
 import type {
   ChainAdapter,
   ReceiveAddress,
@@ -5,8 +18,14 @@ import type {
   SolRawTokenBalance,
   SolRawTx,
 } from './chain-adapter.js';
+import { formatUnits } from '../core/money.js';
+import { assertSendable } from '../core/preflight.js';
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
-import type { ChainAdapterTransferParams, UnsignedArtifact } from '../domain/transfer.js';
+import {
+  VERIFY_NOTE,
+  type ChainAdapterTransferParams,
+  type UnsignedArtifact,
+} from '../domain/transfer.js';
 import type { Balance, HistoryOptions, Tx } from '../domain/types.js';
 import {
   SOL_TOKEN_2022_PROGRAM,
@@ -225,7 +244,7 @@ function unknownTx(raw: SolRawTx): Tx {
 
 export class SolanaAdapter implements ChainAdapter {
   readonly family = 'solana' as const;
-  readonly capabilities = { derivesAddresses: false, preparesTransfers: false } as const;
+  readonly capabilities = { derivesAddresses: false, preparesTransfers: true } as const;
 
   constructor(private readonly provider: SolDataProvider) {}
 
@@ -330,7 +349,60 @@ export class SolanaAdapter implements ChainAdapter {
       .slice(0, limit);
   }
 
-  async buildUnsignedTransfer(_params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
-    throw new Error('buildUnsignedTransfer not implemented for this chain yet');
+  async buildUnsignedTransfer(params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
+    if (params.chain !== 'solana') {
+      throw new Error(`SolanaAdapter cannot prepare transfers for ${params.chain}.`);
+    }
+    assertSendable({ chain: 'solana', asset: params.asset, rawAmount: params.rawAmount });
+
+    const native = nativeAsset('solana');
+    if (params.asset !== native.symbol) {
+      throw new Error('Solana SPL token transfers are deferred (Phase 2.1).');
+    }
+
+    const from = pubkeysOf(params.account)[0];
+    if (from === undefined) {
+      throw new Error('Solana account has no address.');
+    }
+    const feePayer = address(from);
+    const { blockhash, lastValidBlockHeight } = await this.provider.getLatestBlockhash();
+    const instruction = getTransferSolInstruction({
+      source: feePayer as never,
+      destination: address(params.to),
+      amount: params.rawAmount,
+    });
+
+    const message = pipe(
+      createTransactionMessage({ version: 0 }),
+      (tx) => setTransactionMessageFeePayer(feePayer, tx),
+      (tx) =>
+        setTransactionMessageLifetimeUsingBlockhash(
+          { blockhash: blockhash as Blockhash, lastValidBlockHeight },
+          tx,
+        ),
+      (tx) => appendTransactionMessageInstruction(instruction, tx),
+    );
+    const compiled = compileTransaction(message);
+    const messageBytes = new Uint8Array(compiled.messageBytes);
+    const payload = base64.encode(messageBytes);
+
+    return {
+      kind: 'solana-message',
+      payload,
+      summary: {
+        chain: 'solana',
+        asset: params.asset,
+        from,
+        to: params.to,
+        amount: formatUnits(params.rawAmount, native.decimals),
+        rawAmount: params.rawAmount.toString(),
+        decimals: native.decimals,
+        fee: '0.000005',
+        rawFee: '5000',
+        feeAsset: 'SOL',
+        artifactHash: hex.encode(sha256(messageBytes)),
+      },
+      verifyNote: VERIFY_NOTE,
+    };
   }
 }

@@ -45,6 +45,20 @@ const evmTransferParams: ChainAdapterTransferParams = {
   rawAmount: 1_000_000_000_000_000n,
 };
 
+const solTransferParams: ChainAdapterTransferParams = {
+  account: {
+    id: 'acct-sol',
+    label: 'SOL',
+    family: 'solana',
+    chains: ['solana'],
+    source: { kind: 'addresses', addresses: ['11111111111111111111111111111112'] },
+  },
+  chain: 'solana',
+  to: '11111111111111111111111111111113',
+  asset: 'SOL',
+  rawAmount: 1_000_000n,
+};
+
 const fakeBtcProvider: BtcDataProvider = {
   async getAddress(address) {
     return {
@@ -98,6 +112,9 @@ const fakeSolProvider: SolDataProvider = {
   async getTransaction() {
     return undefined;
   },
+  async getLatestBlockhash() {
+    return { blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 123n };
+  },
 };
 
 describe('transfer construction seam', () => {
@@ -131,7 +148,7 @@ describe('transfer construction seam', () => {
     expect(artifact.summary.rawAmount).toBe(transferParams.rawAmount.toString());
   });
 
-  it('reports BTC and EVM preparation as available while later chain implementations remain unavailable', async () => {
+  it('reports BTC, EVM, and native Solana preparation as available', async () => {
     const bitcoin = new BitcoinAdapter(fakeBtcProvider);
     expect(bitcoin.capabilities.preparesTransfers).toBe(true);
     await expect(bitcoin.buildUnsignedTransfer(transferParams)).rejects.toThrow(
@@ -145,9 +162,9 @@ describe('transfer construction seam', () => {
     });
 
     const solana = new SolanaAdapter(fakeSolProvider);
-    expect(solana.capabilities.preparesTransfers).toBe(false);
-    await expect(solana.buildUnsignedTransfer(transferParams)).rejects.toThrow(
-      'buildUnsignedTransfer not implemented for this chain yet',
-    );
+    expect(solana.capabilities.preparesTransfers).toBe(true);
+    await expect(solana.buildUnsignedTransfer(solTransferParams)).resolves.toMatchObject({
+      kind: 'solana-message',
+    });
   });
 });
