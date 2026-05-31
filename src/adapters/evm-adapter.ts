@@ -244,7 +244,12 @@ export class EvmAdapter implements ChainAdapter {
 
     return [...groups.values()]
       .map(groupToTx)
-      .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+      .sort((a, b) => {
+        // Unconfirmed txs (no timestamp) are the newest — sort them to the top.
+        const ta = a.timestamp ?? Number.POSITIVE_INFINITY;
+        const tb = b.timestamp ?? Number.POSITIVE_INFINITY;
+        return ta === tb ? 0 : tb - ta;
+      })
       .slice(0, limit);
   }
 }
