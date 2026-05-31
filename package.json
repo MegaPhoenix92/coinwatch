@@ -24,9 +24,11 @@
     "@scure/base": "^2.2.0",
     "@scure/bip32": "^2.2.0",
     "@scure/btc-signer": "^2.2.0",
+    "better-sqlite3": "^12.10.0",
     "zod": "^4"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22",
     "tsx": "^4.22.3",
     "typescript": "^5.9.0",
