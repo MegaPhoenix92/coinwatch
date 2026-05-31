@@ -1,13 +1,27 @@
+import { sha256 } from '@noble/hashes/sha2.js';
+import { hex } from '@scure/base';
+import {
+  encodeFunctionData,
+  erc20Abi,
+  serializeTransaction,
+  type Address,
+} from 'viem';
 import type {
   ChainAdapter,
   EvmDataProvider,
   EvmRawTransfer,
   ReceiveAddress,
 } from './chain-adapter.js';
+import { formatUnits } from '../core/money.js';
+import { assertSendable } from '../core/preflight.js';
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
 import { EVM_CHAINS, type Chain, type EvmChain } from '../domain/chains.js';
 import { assetBySymbol, nativeAsset, tokensForChain, type AssetSymbol } from '../domain/assets.js';
-import type { ChainAdapterTransferParams, UnsignedArtifact } from '../domain/transfer.js';
+import {
+  VERIFY_NOTE,
+  type ChainAdapterTransferParams,
+  type UnsignedArtifact,
+} from '../domain/transfer.js';
 import type { Balance, HistoryOptions, Tx } from '../domain/types.js';
 
 const RECEIVE_NOTE =
@@ -108,7 +122,7 @@ function groupToTx(group: TransferGroup): Tx {
 
 export class EvmAdapter implements ChainAdapter {
   readonly family = 'evm' as const;
-  readonly capabilities = { derivesAddresses: false, preparesTransfers: false } as const;
+  readonly capabilities = { derivesAddresses: false, preparesTransfers: true } as const;
 
   constructor(private readonly provider: EvmDataProvider) {}
 
@@ -254,7 +268,96 @@ export class EvmAdapter implements ChainAdapter {
       .slice(0, limit);
   }
 
-  async buildUnsignedTransfer(_params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
-    throw new Error('buildUnsignedTransfer not implemented for this chain yet');
+  async buildUnsignedTransfer(params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
+    assertSendable({ chain: params.chain, asset: params.asset, rawAmount: params.rawAmount });
+    if (!isEvmChain(params.chain)) {
+      throw new Error(`${params.chain} is not an EVM chain.`);
+    }
+
+    const from =
+      params.account.source.kind === 'addresses' ? params.account.source.addresses[0] : undefined;
+    if (from === undefined) {
+      throw new Error('EVM account has no address.');
+    }
+    const lowerFrom = from.toLowerCase();
+
+    const native = nativeAsset(params.chain);
+    const asset = assetBySymbol(params.chain, params.asset);
+    if (asset === undefined) {
+      throw new Error(`Asset ${params.asset} is not available on ${params.chain}.`);
+    }
+
+    let to: Address;
+    let value: bigint;
+    let data: `0x${string}` | undefined;
+    if (params.asset === native.symbol) {
+      to = params.to as Address;
+      value = params.rawAmount;
+      data = undefined;
+    } else {
+      const token = tokensForChain(params.chain).find((candidate) => candidate.symbol === params.asset);
+      if (token?.address === undefined) {
+        throw new Error(`Token ${params.asset} not configured on ${params.chain}.`);
+      }
+      to = token.address.toLowerCase() as Address;
+      value = 0n;
+      data = encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'transfer',
+        args: [params.to as Address, params.rawAmount],
+      });
+    }
+
+    const nonce = await this.provider.getTransactionCount(params.chain, lowerFrom);
+    let fees: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint };
+    if (params.feeRate === undefined) {
+      fees = await this.provider.getFeesPerGas(params.chain);
+    } else {
+      // The feeRate override is in gwei (per the TransferRequest contract), but
+      // EIP-1559 maxFeePerGas/maxPriorityFeePerGas are wei — convert (×1e9).
+      // Without this the override is consumed as wei (~1e9× too low → an
+      // unincludable tx). NOTE: do NOT push this into parseFeeRate, which is
+      // shared with BTC where feeRate is sat/vB and used directly.
+      const maxFeePerGas = params.feeRate * 1_000_000_000n;
+      fees = { maxFeePerGas, maxPriorityFeePerGas: maxFeePerGas / 2n };
+    }
+    const gas = await this.provider.estimateGas(params.chain, {
+      from: lowerFrom,
+      to,
+      value,
+      data,
+    });
+    const chainId = this.provider.getChainId(params.chain);
+    const serialized = serializeTransaction({
+      type: 'eip1559',
+      chainId,
+      nonce,
+      to,
+      value,
+      gas,
+      data,
+      maxFeePerGas: fees.maxFeePerGas,
+      maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+    });
+    const rawFee = gas * fees.maxFeePerGas;
+
+    return {
+      kind: 'evm-eip1559',
+      payload: serialized,
+      summary: {
+        chain: params.chain,
+        asset: params.asset,
+        from: lowerFrom,
+        to: params.to,
+        amount: formatUnits(params.rawAmount, asset.decimals),
+        rawAmount: params.rawAmount.toString(),
+        decimals: asset.decimals,
+        fee: formatUnits(rawFee, native.decimals),
+        rawFee: rawFee.toString(),
+        feeAsset: native.symbol,
+        artifactHash: hex.encode(sha256(new TextEncoder().encode(serialized))),
+      },
+      verifyNote: VERIFY_NOTE,
+    };
   }
 }

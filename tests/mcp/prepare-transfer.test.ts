@@ -4,13 +4,20 @@ import { hex } from '@scure/base';
 import * as btc from '@scure/btc-signer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BitcoinAdapter } from '../../src/adapters/bitcoin-adapter.js';
+import { EvmAdapter } from '../../src/adapters/evm-adapter.js';
 import type {
   BtcDataProvider,
   BtcUtxo,
+  ChainAdapter,
+  EvmDataProvider,
+  EvmGasEstimateRequest,
+  EvmRawTransfer,
+  EvmTokenBalance,
   MempoolAddressResponse,
   MempoolTx,
   PriceProvider,
 } from '../../src/adapters/chain-adapter.js';
+import type { EvmChain } from '../../src/domain/chains.js';
 import type { AccountDescriptor } from '../../src/domain/account.js';
 import type { ChainFamily } from '../../src/domain/chains.js';
 import { buildHandlers } from '../../src/mcp/tools.js';
@@ -18,6 +25,8 @@ import { PortfolioService } from '../../src/services/portfolio-service.js';
 
 const WATCHED = 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu';
 const RECIPIENT = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
+const EVM_FROM = '0x0000000000000000000000000000000000000001';
+const EVM_TO = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 
 const accounts: AccountDescriptor[] = [
   {
@@ -26,6 +35,13 @@ const accounts: AccountDescriptor[] = [
     family: 'bitcoin',
     chains: ['bitcoin'],
     source: { kind: 'addresses', addresses: [WATCHED] },
+  },
+  {
+    id: 'evm',
+    label: 'EVM',
+    family: 'evm',
+    chains: ['ethereum'],
+    source: { kind: 'addresses', addresses: [EVM_FROM] },
   },
 ];
 
@@ -42,6 +58,30 @@ const fakeBtcProvider: BtcDataProvider = {
   },
   async getUtxos(): Promise<BtcUtxo[]> {
     return [{ txid: 'b'.repeat(64), vout: 0, value: 200_000 }];
+  },
+};
+
+const fakeEvmProvider: EvmDataProvider = {
+  async getNativeBalance(): Promise<bigint> {
+    return 0n;
+  },
+  async getTokenBalances(): Promise<EvmTokenBalance[]> {
+    return [];
+  },
+  async getTransfers(): Promise<EvmRawTransfer[]> {
+    return [];
+  },
+  async getTransactionCount(): Promise<number> {
+    return 0;
+  },
+  async estimateGas(_chain: EvmChain, _req: EvmGasEstimateRequest): Promise<bigint> {
+    return 21_000n;
+  },
+  async getFeesPerGas(): Promise<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }> {
+    return { maxFeePerGas: 30_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n };
+  },
+  getChainId(): number {
+    return 1;
   },
 };
 
@@ -108,5 +148,39 @@ describe('prepare_transfer MCP handler', () => {
         feeRate: '1.5',
       }),
     ).rejects.toThrow(/fee rate/i);
+  });
+
+  it('writes EVM 0x-hex text whose file hash matches the verification summary', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_001);
+    const adapters = new Map<ChainFamily, ChainAdapter>([
+      ['evm', new EvmAdapter(fakeEvmProvider)],
+    ]);
+    const service = new PortfolioService(adapters, fakePrices);
+    const handlers = buildHandlers(service, accounts);
+
+    const res = await handlers.prepare_transfer({
+      accountId: 'evm',
+      to: EVM_TO,
+      asset: 'ETH',
+      amount: '0.001',
+    });
+    const parsed = JSON.parse(res.content[0].text) as {
+      kind: string;
+      payload: string;
+      summary: { artifactHash: string; rawAmount: string };
+      file: string;
+    };
+
+    expect(parsed.kind).toBe('evm-eip1559');
+    expect(parsed.summary.rawAmount).toBe('1000000000000000');
+    expect(parsed.payload.startsWith('0x02')).toBe(true);
+    expect(parsed.file).toMatch(/coinwatch-unsigned-evm-eip1559-1700000000001\.evmtx$/);
+
+    const fileText = readFileSync(parsed.file, 'utf8');
+    expect(fileText).toBe(parsed.payload);
+    expect(hex.encode(sha256(new TextEncoder().encode(fileText)))).toBe(
+      parsed.summary.artifactHash,
+    );
+    unlinkSync(parsed.file);
   });
 });
