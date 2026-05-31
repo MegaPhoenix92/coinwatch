@@ -222,4 +222,21 @@ describe('SolanaAdapter.buildUnsignedTransfer SPL tokens', () => {
     );
     expect(provider.existsQueries).toEqual([atas.source, atas.destination]);
   });
+
+  it('requires the sender token account to already exist', async () => {
+    const atas = await splAtas();
+    const provider = new FakeSolProvider(new Set([atas.destination]));
+    const adapter = new SolanaAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'solana',
+        to: TO,
+        asset: 'USDC',
+        rawAmount: 1_000_000n,
+      }),
+    ).rejects.toThrow('This account has no USDC token account.');
+    expect(provider.existsQueries).toEqual([atas.source]);
+  });
 });
