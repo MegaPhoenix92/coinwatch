@@ -4,6 +4,7 @@ import type { Balance, HistoryOptions, Tx } from '../domain/types.js';
 import type {
   BtcDataProvider,
   ChainAdapter,
+  MempoolAddressResponse,
   MempoolTx,
   ReceiveAddress,
 } from './chain-adapter.js';
@@ -13,6 +14,10 @@ const RECEIVE_NOTE_DERIVED =
 const RECEIVE_NOTE_LITERAL =
   'This is your supplied address - verify on your signing device before use.';
 const DEFAULT_GAP_LIMIT = 20;
+
+export interface BitcoinBalancePending {
+  pendingRaw: bigint;
+}
 
 function receivedByAddress(tx: MempoolTx, address: string): bigint {
   return tx.vout.reduce((sum, vout) => {
@@ -28,27 +33,58 @@ function sentByAddress(tx: MempoolTx, address: string): bigint {
   }, 0n);
 }
 
-function txForAddress(tx: MempoolTx, address: string): Tx | undefined {
-  const received = receivedByAddress(tx, address);
-  const sent = sentByAddress(tx, address);
+function confirmedRaw(resp: MempoolAddressResponse): bigint {
+  return BigInt(resp.chain_stats.funded_txo_sum) - BigInt(resp.chain_stats.spent_txo_sum);
+}
+
+function pendingRaw(resp: MempoolAddressResponse): bigint {
+  return BigInt(resp.mempool_stats.funded_txo_sum) - BigInt(resp.mempool_stats.spent_txo_sum);
+}
+
+function firstExternalInput(tx: MempoolTx, watched: Set<string>): string | undefined {
+  return tx.vin.find((vin) => {
+    const address = vin.prevout?.scriptpubkey_address;
+    return address !== undefined && !watched.has(address);
+  })?.prevout?.scriptpubkey_address;
+}
+
+function firstExternalOutput(tx: MempoolTx, watched: Set<string>): string | undefined {
+  return tx.vout.find((vout) => {
+    const address = vout.scriptpubkey_address;
+    return address !== undefined && !watched.has(address);
+  })?.scriptpubkey_address;
+}
+
+function txForWatchedSet(tx: MempoolTx, watched: Set<string>): Tx | undefined {
+  let received = 0n;
+  let sent = 0n;
+
+  for (const address of watched) {
+    received += receivedByAddress(tx, address);
+    sent += sentByAddress(tx, address);
+  }
+
   const net = received - sent;
 
   let direction: Tx['direction'];
-  if (sent > 0n && received > 0n) {
-    direction = 'self';
-  } else if (net > 0n) {
+  let counterparty: string | undefined;
+  if (net > 0n) {
     direction = 'in';
+    counterparty = firstExternalInput(tx, watched);
   } else if (net < 0n) {
-    direction = 'out';
+    counterparty = firstExternalOutput(tx, watched);
+    direction = counterparty === undefined && sent > 0n && received > 0n ? 'self' : 'out';
+  } else if (sent > 0n || received > 0n) {
+    direction = 'self';
   } else {
     direction = 'unknown';
   }
 
-  if (direction === 'unknown' && sent === 0n && received === 0n) {
+  if (direction === 'unknown') {
     return undefined;
   }
 
-  return {
+  const mapped: Tx = {
     chain: 'bitcoin',
     txid: tx.txid,
     timestamp: tx.status.block_time,
@@ -58,6 +94,10 @@ function txForAddress(tx: MempoolTx, address: string): Tx | undefined {
     decimals: 8,
     confirmed: tx.status.confirmed,
   };
+  if (counterparty !== undefined) {
+    mapped.counterparty = counterparty;
+  }
+  return mapped;
 }
 
 export class BitcoinAdapter implements ChainAdapter {
@@ -69,12 +109,19 @@ export class BitcoinAdapter implements ChainAdapter {
   async resolveAddresses(account: AccountDescriptor): Promise<DerivedAddress[]> {
     const source = account.source;
     if (source.kind === 'xpub') {
-      const derived = deriveAddresses(
+      const receive = deriveAddresses(
         source.xpub,
         source.scriptType,
         source.gapLimit ?? DEFAULT_GAP_LIMIT,
         0,
       );
+      const change = deriveAddresses(
+        source.xpub,
+        source.scriptType,
+        source.gapLimit ?? DEFAULT_GAP_LIMIT,
+        1,
+      );
+      const derived = [...receive, ...change];
       return derived.map((address) => ({
         address: address.address,
         chain: 'bitcoin',
@@ -120,35 +167,41 @@ export class BitcoinAdapter implements ChainAdapter {
     const balances: Balance[] = [];
     for (const { address } of addresses) {
       const resp = await this.provider.getAddress(address);
-      const raw =
-        BigInt(resp.chain_stats.funded_txo_sum) - BigInt(resp.chain_stats.spent_txo_sum);
-      balances.push({
+      const balance: Balance & BitcoinBalancePending = {
         chain: 'bitcoin',
         address,
         symbol: 'BTC',
-        raw,
+        raw: confirmedRaw(resp),
         decimals: 8,
-      });
+        pendingRaw: pendingRaw(resp),
+      };
+      balances.push(balance);
     }
     return balances;
   }
 
   async getHistory(addresses: DerivedAddress[], opts?: HistoryOptions): Promise<Tx[]> {
-    const limit = opts?.limit ?? Number.POSITIVE_INFINITY;
-    const history: Tx[] = [];
+    const watched = new Set(addresses.map(({ address }) => address));
+    const txsById = new Map<string, MempoolTx>();
 
     for (const { address } of addresses) {
-      if (history.length >= limit) break;
       const txs = await this.provider.getAddressTxs(address);
       for (const tx of txs) {
-        if (history.length >= limit) break;
-        const mapped = txForAddress(tx, address);
-        if (mapped !== undefined) {
-          history.push(mapped);
-        }
+        txsById.set(tx.txid, tx);
       }
     }
 
-    return history;
+    const history = [...txsById.values()]
+      .map((tx) => txForWatchedSet(tx, watched))
+      .filter((tx): tx is Tx => tx !== undefined)
+      .sort((a, b) => {
+        // Unconfirmed txs (no block_time) are the newest — sort them to the top.
+        const ta = a.timestamp ?? Number.POSITIVE_INFINITY;
+        const tb = b.timestamp ?? Number.POSITIVE_INFINITY;
+        return ta === tb ? 0 : tb - ta;
+      });
+
+    const limit = opts?.limit;
+    return typeof limit === 'number' ? history.slice(0, limit) : history;
   }
 }

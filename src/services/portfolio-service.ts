@@ -6,6 +6,10 @@ import type { ChainFamily } from '../domain/chains.js';
 import type { Balance, HistoryOptions, PortfolioView, Tx } from '../domain/types.js';
 import type { Store } from '../db/store.js';
 
+interface BalanceWithPending extends Balance {
+  pendingRaw?: bigint;
+}
+
 export class PortfolioService {
   constructor(
     private readonly adapters: Map<ChainFamily, ChainAdapter>,
@@ -24,9 +28,21 @@ export class PortfolioService {
         continue;
       }
 
-      const addresses = await adapter.resolveAddresses(account);
-      const balances = await adapter.getBalances(addresses);
-      allBalances.push(...balances);
+      try {
+        const addresses = await adapter.resolveAddresses(account);
+        const balances = await adapter.getBalances(addresses);
+        for (const balance of balances as BalanceWithPending[]) {
+          if (balance.pendingRaw !== undefined && balance.pendingRaw !== 0n) {
+            warnings.push(
+              `Pending ${balance.symbol} balance for ${balance.address} on ${balance.chain}: ${balance.pendingRaw.toString()} raw units`,
+            );
+          }
+        }
+        allBalances.push(...balances);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        warnings.push(`Failed to load account ${account.id} (${account.family}): ${message}`);
+      }
     }
 
     const ids = new Set<string>();
@@ -37,7 +53,15 @@ export class PortfolioService {
       }
     }
 
-    const priceMap = await this.prices.getUsdPrices([...ids]);
+    let priceMap: Map<string, number>;
+    try {
+      priceMap = await this.prices.getUsdPrices([...ids]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      warnings.push(`Failed to load prices: ${message}`);
+      priceMap = new Map<string, number>();
+    }
+
     const view = value(allBalances, priceMap, assetBySymbol);
     view.warnings.push(...warnings);
     return view;
@@ -81,12 +105,20 @@ export class PortfolioService {
         continue;
       }
 
-      const addresses = await adapter.resolveAddresses(account);
-      const txs = await adapter.getHistory(addresses, opts);
-      if (this.store !== undefined) {
-        this.store.cacheTxs(txs);
+      try {
+        const addresses = await adapter.resolveAddresses(account);
+        const txs = await adapter.getHistory(addresses, opts);
+        if (this.store !== undefined) {
+          this.store.cacheTxs(txs);
+        }
+        out.push(...txs);
+      } catch {
+        // Degrade rather than crash: skip this account's history on provider failure,
+        // matching getPortfolio's resilience. getHistory returns Tx[] with no warnings
+        // channel yet; warning-surfacing is completed when the get_history MCP tool
+        // envelope is built (#51).
+        continue;
       }
-      out.push(...txs);
     }
 
     const limit = opts?.limit;
