@@ -168,4 +168,45 @@ describe('no-signing gate - Phase 2 construction is allowed, signing still banne
       expect(stderr).toContain(symbol);
     }
   });
+
+  it('flags viem/accounts signing + key/HD-seed/mnemonic creation primitives', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'cw-viem-gate-'));
+    const fixture = join(dir, 'bad-viem-seed.ts');
+    // Each line is a real bypass primitive that previously passed the gate green:
+    // standalone viem/accounts signers + key/mnemonic/HD-seed creation, plus the
+    // @scure/bip32 HDKey static keygen methods. The gate is a text scanner, so the
+    // fixture need not typecheck — only the call-site text must be flagged.
+    const dangerousCallSites = [
+      'const a = generatePrivateKey();',
+      'const b = sign({ hash, privateKey });',
+      'const c = signAuthorization({});',
+      'const d = mnemonicToAccount(phrase);',
+      'const e = hdKeyToAccount({});',
+      'const f = generateMnemonic();',
+      'const g = mnemonicToSeedSync(phrase);',
+      'const h = HDKey.fromMasterSeed(seed);',
+      'const i = HDKey.fromJSON(json);',
+    ];
+    await writeFile(fixture, dangerousCallSites.join('\n'), 'utf8');
+
+    let stderr = '';
+    try {
+      await execFileAsync(process.execPath, [CHECK_SCRIPT, fixture]);
+    } catch (error) {
+      stderr = (error as { stderr?: string }).stderr ?? '';
+    }
+    for (const needle of [
+      'generatePrivateKey(',
+      'sign(',
+      'signAuthorization(',
+      'mnemonicToAccount(',
+      'hdKeyToAccount(',
+      'generateMnemonic(',
+      'mnemonicToSeedSync(',
+      'HDKey.fromMasterSeed(',
+      'HDKey.fromJSON(',
+    ]) {
+      expect(stderr).toContain(needle);
+    }
+  });
 });

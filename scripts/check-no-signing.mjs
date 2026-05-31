@@ -20,6 +20,18 @@ const FORBIDDEN = [
   { name: 'WalletClient', pattern: /\bWalletClient\b/ },
   { name: 'createWalletClient', pattern: /\bcreateWalletClient\b/ },
   { name: 'privateKeyToAccount', pattern: /\bprivateKeyToAccount\b/ },
+  // viem/accounts standalone signing + key/HD-seed creation. viem is already a
+  // src/ dependency and `viem/accounts` is one import away, so these are reachable
+  // bypasses that the names above (privateKeyToAccount/signTransaction/…) miss.
+  // Targeted to stay clear of the legit watch-only HDKey.fromExtendedKey(xpub).
+  { name: 'generatePrivateKey', pattern: /\bgeneratePrivateKey\s*\(/ },
+  { name: 'sign(', pattern: /\bsign\s*\(/ },
+  { name: 'signAuthorization', pattern: /\bsignAuthorization\s*\(/ },
+  { name: 'mnemonicToAccount', pattern: /\bmnemonicToAccount\s*\(/ },
+  { name: 'hdKeyToAccount', pattern: /\bhdKeyToAccount\s*\(/ },
+  { name: 'generateMnemonic', pattern: /\bgenerateMnemonic\s*\(/ },
+  { name: 'fromMasterSeed', pattern: /\bfromMasterSeed\s*\(/ },
+  { name: 'HDKey.fromJSON', pattern: /\bHDKey\s*\.\s*fromJSON\s*\(/ },
   { name: 'signTransactionMessageWithSigners', pattern: /\bsignTransactionMessageWithSigners\s*\(/ },
   { name: 'signTransactionWithSigners', pattern: /\bsignTransactionWithSigners\s*\(/ },
   { name: 'partiallySignTransaction', pattern: /\bpartiallySignTransaction\s*\(/ },
@@ -57,7 +69,11 @@ const FORBIDDEN = [
   { name: 'Keypair', pattern: /\bKeypair\b/ },
   { name: 'secretKey', pattern: /\bsecretKey\b/ },
   { name: 'fromSecretKey', pattern: /\bfromSecretKey\b/ },
-  { name: 'mnemonic', pattern: /\bmnemonic\b/i },
+  // Broad on purpose: a watch-only wallet never touches a mnemonic in any form
+  // (mnemonicToAccount/generateMnemonic/mnemonicToSeed*/mnemonicToEntropy). The
+  // previous /\bmnemonic\b/i had a trailing-\b bug that matched only a bare token
+  // and let every real call-site through. FP-free (src/ has zero mnemonic refs).
+  { name: 'mnemonic', pattern: /mnemonic/i },
   { name: 'fromSeed', pattern: /\bfromSeed\b/ },
 ];
 
