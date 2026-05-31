@@ -5,11 +5,13 @@ import { secp256k1 } from '@noble/curves/secp256k1.js';
 import {
   assertIsFullySignedTransaction,
   generateKeyPairSigner,
+  getCompiledTransactionMessageDecoder,
   getTransactionDecoder,
   getTransactionEncoder,
   signTransaction,
   type Transaction,
 } from '@solana/kit';
+import { getTransferSolInstructionDataDecoder } from '@solana-program/system';
 import { describe, expect, it } from 'vitest';
 import { parseTransaction, recoverTransactionAddress } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -216,6 +218,20 @@ describe('unsigned artifact signability conformance', () => {
     });
 
     const messageBytes = base64.decode(artifact.payload);
+    // Content proof (symmetric with the BTC amount + EVM to/value checks above):
+    // decode the compiled message and assert it actually pays `recipient` the
+    // right lamports. Signability alone would pass on a wrong-dest/wrong-amount
+    // message — verified by mutation probe.
+    const compiledMessage = getCompiledTransactionMessageDecoder().decode(messageBytes);
+    const transferIx = (
+      compiledMessage as unknown as {
+        instructions: { accountIndices?: readonly number[]; data: Uint8Array }[];
+      }
+    ).instructions[0];
+    const destIndex = transferIx.accountIndices?.[1] ?? -1;
+    expect(compiledMessage.staticAccounts[destIndex]).toBe(recipient.address);
+    expect(getTransferSolInstructionDataDecoder().decode(transferIx.data).amount).toBe(1_000_000n);
+
     const unsigned: Transaction = {
       messageBytes: messageBytes as unknown as Transaction['messageBytes'],
       signatures: { [signer.address]: null },
