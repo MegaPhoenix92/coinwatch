@@ -117,6 +117,9 @@ const fakeSolProvider: SolDataProvider = {
       lastValidBlockHeight: 123n,
     };
   },
+  async getAccountExists(): Promise<boolean> {
+    return true;
+  },
 };
 
 const fakePrices: PriceProvider = {

@@ -42,6 +42,9 @@ const fake: SolDataProvider = {
   async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }> {
     return { blockhash: BLOCKHASH, lastValidBlockHeight: 123n };
   },
+  async getAccountExists(): Promise<boolean> {
+    return true;
+  },
 };
 
 describe('SolanaAdapter.buildUnsignedTransfer', () => {
@@ -97,17 +100,24 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
     expect(artifact.summary.artifactHash).toBe(hex.encode(sha256(messageBytes)));
   });
 
-  it('defers SPL token transfer construction to Phase 2.1', async () => {
+  it('builds SPL token transfer construction in Phase 2.1', async () => {
     const adapter = new SolanaAdapter(fake);
 
-    await expect(
-      adapter.buildUnsignedTransfer({
-        account,
-        chain: 'solana',
-        to: TO,
-        asset: 'USDC',
-        rawAmount: 1_000_000n,
-      }),
-    ).rejects.toThrow('Solana SPL token transfers are deferred (Phase 2.1).');
+    const artifact = await adapter.buildUnsignedTransfer({
+      account,
+      chain: 'solana',
+      to: TO,
+      asset: 'USDC',
+      rawAmount: 1_000_000n,
+    });
+
+    expect(artifact.kind).toBe('solana-message');
+    expect(artifact.summary).toMatchObject({
+      asset: 'USDC',
+      to: TO,
+      rawAmount: '1000000',
+      decimals: 6,
+      feeAsset: 'SOL',
+    });
   });
 });

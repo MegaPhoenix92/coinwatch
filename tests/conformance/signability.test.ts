@@ -3,6 +3,7 @@ import { base64, hex } from '@scure/base';
 import * as btc from '@scure/btc-signer';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import {
+  address,
   assertIsFullySignedTransaction,
   generateKeyPairSigner,
   getCompiledTransactionMessageDecoder,
@@ -11,6 +12,10 @@ import {
   signTransaction,
   type Transaction,
 } from '@solana/kit';
+import {
+  findAssociatedTokenPda as findSplAssociatedTokenPda,
+  getTransferCheckedInstructionDataDecoder as getSplTransferCheckedInstructionDataDecoder,
+} from '@solana-program/token';
 import { getTransferSolInstructionDataDecoder } from '@solana-program/system';
 import { describe, expect, it } from 'vitest';
 import { parseTransaction, recoverTransactionAddress } from 'viem';
@@ -32,6 +37,7 @@ import type {
   SolTokenAccount,
 } from '../../src/adapters/chain-adapter.js';
 import type { AccountDescriptor } from '../../src/domain/account.js';
+import { SOL_TOKEN_PROGRAM, assetBySymbol } from '../../src/domain/assets.js';
 import type { EvmChain } from '../../src/domain/chains.js';
 
 const BTC_TO = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
@@ -110,6 +116,10 @@ class FakeSolProvider implements SolDataProvider {
 
   async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }> {
     return { blockhash: SOL_BLOCKHASH, lastValidBlockHeight: 123n };
+  }
+
+  async getAccountExists(): Promise<boolean> {
+    return true;
   }
 }
 
@@ -245,6 +255,65 @@ describe('unsigned artifact signability conformance', () => {
     expect(decoded.messageBytes).toEqual(messageBytes);
     expect(decoded.signatures[signer.address]).toBeInstanceOf(Uint8Array);
     expect(decoded.signatures[signer.address]?.byteLength).toBe(64);
+    expect(artifact.summary.artifactHash).toBe(hex.encode(sha256(messageBytes)));
+  });
+
+  it('builds a Solana SPL message that a controlled throwaway key can complete', async () => {
+    const signer = await generateKeyPairSigner();
+    const recipient = await generateKeyPairSigner();
+    const usdc = assetBySymbol('solana', 'USDC');
+    if (usdc?.address === undefined) {
+      throw new Error('USDC mint missing from registry');
+    }
+    const mint = address(usdc.address);
+    const tokenProgram = address(SOL_TOKEN_PROGRAM);
+    const [source] = await findSplAssociatedTokenPda({
+      owner: signer.address,
+      mint,
+      tokenProgram,
+    });
+    const [destination] = await findSplAssociatedTokenPda({
+      owner: recipient.address,
+      mint,
+      tokenProgram,
+    });
+
+    const adapter = new SolanaAdapter(new FakeSolProvider());
+    const artifact = await adapter.buildUnsignedTransfer({
+      account: solAccount(signer.address),
+      chain: 'solana',
+      to: recipient.address,
+      asset: 'USDC',
+      rawAmount: 2_500_000n,
+    });
+
+    const messageBytes = base64.decode(artifact.payload);
+    const compiledMessage = getCompiledTransactionMessageDecoder().decode(messageBytes);
+    const transferIx = (
+      compiledMessage as unknown as {
+        instructions: { programAddressIndex: number; accountIndices?: readonly number[]; data: Uint8Array }[];
+      }
+    ).instructions[0];
+    expect(compiledMessage.staticAccounts[transferIx.programAddressIndex]).toBe(tokenProgram);
+    expect((transferIx.accountIndices ?? []).map((index) => compiledMessage.staticAccounts[index])).toEqual([
+      source,
+      mint,
+      destination,
+      signer.address,
+    ]);
+    expect(getSplTransferCheckedInstructionDataDecoder().decode(transferIx.data)).toEqual({
+      discriminator: 12,
+      amount: 2_500_000n,
+      decimals: 6,
+    });
+
+    const unsigned: Transaction = {
+      messageBytes: messageBytes as unknown as Transaction['messageBytes'],
+      signatures: { [signer.address]: null },
+    };
+    const signed = await signTransaction([signer.keyPair], unsigned);
+    assertIsFullySignedTransaction(signed);
+    expect(getTransactionEncoder().encode(signed).length).toBeGreaterThan(messageBytes.length);
     expect(artifact.summary.artifactHash).toBe(hex.encode(sha256(messageBytes)));
   });
 });

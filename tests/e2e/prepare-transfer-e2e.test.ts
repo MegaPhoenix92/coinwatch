@@ -117,6 +117,9 @@ const fakeSolProvider: SolDataProvider = {
   async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }> {
     return { blockhash: SOL_BLOCKHASH, lastValidBlockHeight: 123n };
   },
+  async getAccountExists(): Promise<boolean> {
+    return true;
+  },
 };
 
 const fakePrices: PriceProvider = {

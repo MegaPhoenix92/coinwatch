@@ -174,6 +174,14 @@ export class SolanaKitProvider implements SolDataProvider {
       lastValidBlockHeight: BigInt(res.value.lastValidBlockHeight),
     };
   }
+
+  async getAccountExists(addr: string): Promise<boolean> {
+    const res = await withProviderResilience(
+      () => this.rpc.getAccountInfo(address(addr), { encoding: 'base64' }).send(),
+      this.resilience,
+    );
+    return res.value !== null;
+  }
 }
 
 export function createSolanaKitProvider(

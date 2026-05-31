@@ -192,6 +192,10 @@ class FakeSolProvider implements SolDataProvider {
       lastValidBlockHeight: 123n,
     };
   }
+
+  async getAccountExists(): Promise<boolean> {
+    return true;
+  }
 }
 
 const account: AccountDescriptor = {
