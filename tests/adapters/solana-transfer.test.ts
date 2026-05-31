@@ -1,6 +1,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { base64, hex } from '@scure/base';
 import { getCompiledTransactionMessageDecoder } from '@solana/kit';
+import { getTransferSolInstructionDataDecoder } from '@solana-program/system';
 import { describe, expect, it } from 'vitest';
 import { SolanaAdapter } from '../../src/adapters/solana-adapter.js';
 import type {
@@ -11,6 +12,11 @@ import type {
 
 const FROM = '11111111111111111111111111111112';
 const TO = '11111111111111111111111111111113';
+// A real-shaped blockhash DISTINCT from the SystemProgram id, so the
+// lifetimeToken assertion below genuinely exercises blockhash threading.
+// (The all-1s placeholder collides with SystemProgram = staticAccounts[2],
+// which made the prior blockhash check a structural no-op.)
+const BLOCKHASH = 'Gk1noHWTQfA1n4Jc3pj3vHWqUdt4PUmTPGUNQv88L7gd';
 
 const account = {
   id: 'sol',
@@ -34,7 +40,7 @@ const fake: SolDataProvider = {
     return undefined;
   },
   async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }> {
-    return { blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 123n };
+    return { blockhash: BLOCKHASH, lastValidBlockHeight: 123n };
   },
 };
 
@@ -63,6 +69,19 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
     ]);
     expect((decoded as { instructions: unknown[] }).instructions).toHaveLength(1);
     expect('signatures' in decoded).toBe(false);
+    // Blockhash genuinely threaded into the message (lifetimeToken, NOT the
+    // staticAccounts[2]=SystemProgram structural invariant a no-op check hit).
+    expect((decoded as { lifetimeToken: string }).lifetimeToken).toBe(BLOCKHASH);
+    // Decode the instruction so a source/dest SWAP or WRONG AMOUNT is caught —
+    // both compile to identical staticAccounts and would otherwise pass green.
+    const instruction = (
+      decoded as unknown as {
+        instructions: { programAddressIndex: number; accountIndices?: readonly number[]; data: Uint8Array }[];
+      }
+    ).instructions[0];
+    expect(instruction.programAddressIndex).toBe(2); // SystemProgram
+    expect(Array.from(instruction.accountIndices ?? [])).toEqual([0, 1]); // [source=FROM, destination=TO]
+    expect(getTransferSolInstructionDataDecoder().decode(instruction.data).amount).toBe(1_000_000n);
     expect(artifact.summary).toMatchObject({
       chain: 'solana',
       asset: 'SOL',
