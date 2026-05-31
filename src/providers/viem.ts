@@ -42,9 +42,44 @@ function buildRpcUrls(alchemyApiKey?: string, rpcUrls: EvmRpcUrls = {}): EvmRpcU
 export interface ViemProviderOptions {
   rpcUrls?: EvmRpcUrls;
   alchemyApiKey?: string;
+  clients?: Partial<Record<EvmChain, ViemClient>>;
 }
 
-interface ViemClient {
+interface AlchemyAssetTransfersParams {
+  fromBlock: '0x0';
+  toBlock: 'latest';
+  category: ['external', 'internal', 'erc20'];
+  withMetadata: true;
+  excludeZeroValue: true;
+  order: 'desc';
+  maxCount: `0x${string}`;
+  fromAddress?: string;
+  toAddress?: string;
+}
+
+interface AlchemyAssetTransfer {
+  uniqueId: string;
+  hash: string;
+  from: string;
+  to: string;
+  value: number;
+  asset: string | null;
+  category: string;
+  rawContract: {
+    value?: string | null;
+    address?: string | null;
+    decimal?: string | null;
+  };
+  metadata: {
+    blockTimestamp: string;
+  };
+}
+
+interface AlchemyAssetTransfersResponse {
+  transfers: AlchemyAssetTransfer[];
+}
+
+export interface ViemClient {
   getBalance(args: { address: Address }): Promise<bigint>;
   multicall(args: {
     allowFailure: true;
@@ -55,31 +90,37 @@ interface ViemClient {
       args: readonly [Address];
     }[];
   }): Promise<readonly ({ status: 'success'; result: unknown } | { status: 'failure' })[]>;
+  request(args: {
+    method: 'alchemy_getAssetTransfers';
+    params: [AlchemyAssetTransfersParams];
+  }): Promise<AlchemyAssetTransfersResponse>;
 }
 
 export class ViemProvider implements EvmDataProvider {
   private readonly clients: Record<EvmChain, ViemClient>;
+  private readonly hasAlchemy: boolean;
 
   constructor(options: ViemProviderOptions = {}) {
     const rpcUrls = buildRpcUrls(options.alchemyApiKey, options.rpcUrls);
+    this.hasAlchemy = options.alchemyApiKey !== undefined && options.alchemyApiKey.length > 0;
     this.clients = {
-      ethereum: createPublicClient({
+      ethereum: options.clients?.ethereum ?? createPublicClient({
         chain: VIEM_CHAINS.ethereum,
         transport: http(rpcUrls.ethereum),
       }) as ViemClient,
-      base: createPublicClient({
+      base: options.clients?.base ?? createPublicClient({
         chain: VIEM_CHAINS.base,
         transport: http(rpcUrls.base),
       }) as ViemClient,
-      polygon: createPublicClient({
+      polygon: options.clients?.polygon ?? createPublicClient({
         chain: VIEM_CHAINS.polygon,
         transport: http(rpcUrls.polygon),
       }) as ViemClient,
-      arbitrum: createPublicClient({
+      arbitrum: options.clients?.arbitrum ?? createPublicClient({
         chain: VIEM_CHAINS.arbitrum,
         transport: http(rpcUrls.arbitrum),
       }) as ViemClient,
-      optimism: createPublicClient({
+      optimism: options.clients?.optimism ?? createPublicClient({
         chain: VIEM_CHAINS.optimism,
         transport: http(rpcUrls.optimism),
       }) as ViemClient,
@@ -120,10 +161,74 @@ export class ViemProvider implements EvmDataProvider {
   }
 
   async getTransfers(
-    _chain: EvmChain,
-    _address: string,
-    _limit: number,
+    chain: EvmChain,
+    address: string,
+    limit: number,
   ): Promise<EvmRawTransfer[]> {
-    return [];
+    // Alchemy's transfer index is required for EVM history; plain public RPCs do not expose it.
+    if (!this.hasAlchemy) {
+      return [];
+    }
+
+    const lowerAddress = address.toLowerCase();
+    const maxCount = `0x${Math.max(1, limit).toString(16)}` as const;
+    const baseParams = {
+      fromBlock: '0x0',
+      toBlock: 'latest',
+      category: ['external', 'internal', 'erc20'],
+      withMetadata: true,
+      excludeZeroValue: true,
+      order: 'desc',
+      maxCount,
+    } satisfies Omit<AlchemyAssetTransfersParams, 'fromAddress' | 'toAddress'>;
+
+    try {
+      const [sent, received] = await Promise.all([
+        this.clients[chain].request({
+          method: 'alchemy_getAssetTransfers',
+          params: [{ ...baseParams, fromAddress: lowerAddress }],
+        }),
+        this.clients[chain].request({
+          method: 'alchemy_getAssetTransfers',
+          params: [{ ...baseParams, toAddress: lowerAddress }],
+        }),
+      ]);
+
+      const byUniqueId = new Map<string, EvmRawTransfer>();
+      for (const transfer of [...sent.transfers, ...received.transfers]) {
+        if (byUniqueId.has(transfer.uniqueId)) {
+          continue;
+        }
+        byUniqueId.set(transfer.uniqueId, {
+          txid: transfer.hash,
+          from: transfer.from.toLowerCase(),
+          to: transfer.to.toLowerCase(),
+          rawValue: BigInt(transfer.rawContract.value ?? '0x0'),
+          asset: transfer.asset ?? transfer.rawContract.address ?? '',
+          timestamp: Math.floor(Date.parse(transfer.metadata.blockTimestamp) / 1000),
+        });
+      }
+
+      return [...byUniqueId.values()];
+    } catch (error) {
+      if (isMethodNotFound(error)) {
+        return [];
+      }
+      throw error;
+    }
   }
+}
+
+function isMethodNotFound(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown; message?: unknown; shortMessage?: unknown };
+  return (
+    candidate.code === -32601 ||
+    (typeof candidate.message === 'string' && candidate.message.includes('-32601')) ||
+    (typeof candidate.message === 'string' && candidate.message.includes('method not found')) ||
+    (typeof candidate.shortMessage === 'string' && candidate.shortMessage.includes('method not found'))
+  );
 }
