@@ -21,6 +21,12 @@ function writeAccounts(name: string, value: unknown): string {
   return file;
 }
 
+function writeRaw(name: string, value: string): string {
+  const file = join(dir, name);
+  writeFileSync(file, value, 'utf8');
+  return file;
+}
+
 describe('loadAccounts', () => {
   it('parses a valid accounts file into a typed array', () => {
     const valid: AccountDescriptor[] = [
@@ -101,6 +107,24 @@ describe('loadAccounts', () => {
     const file = writeAccounts('not-array.json', { id: 'x' });
 
     expect(() => loadAccounts(file)).toThrow(/Invalid accounts config/);
+  });
+
+  it('does not include malformed JSON input snippets in parse errors', () => {
+    const secretLikeXpub = `zpub${'6DoNotLeakMalformedJsonFixture111111111111111111111111'}`;
+    const file = writeRaw('malformed.json', `[{ "xpub": "${secretLikeXpub}", ]`);
+
+    expect(() => loadAccounts(file)).toThrow(/file is not valid JSON/);
+
+    try {
+      loadAccounts(file);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).toContain(file);
+      expect(message).not.toContain(secretLikeXpub);
+      expect(message).not.toContain('xpub');
+      return;
+    }
+    throw new Error('expected loadAccounts to throw');
   });
 
   it('rejects duplicate account ids without echoing account values', () => {

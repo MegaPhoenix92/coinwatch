@@ -118,9 +118,8 @@ export function loadAccounts(path: string): AccountDescriptor[] {
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(path, 'utf8'));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'unknown error';
-    throw new Error(`Invalid accounts config at ${path}: could not read or parse JSON (${message})`);
+  } catch {
+    throw new Error(`Invalid accounts config at ${path}: file is not valid JSON`);
   }
 
   const parsed = accountsSchema.safeParse(raw);
