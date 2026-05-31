@@ -1,5 +1,6 @@
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
 import type { ChainFamily, EvmChain } from '../domain/chains.js';
+import type { ChainAdapterTransferParams, UnsignedArtifact } from '../domain/transfer.js';
 import type { Balance, HistoryOptions, Tx } from '../domain/types.js';
 
 export interface ReceiveAddress {
@@ -11,11 +12,12 @@ export interface ReceiveAddress {
 
 export interface ChainAdapter {
   readonly family: ChainFamily;
-  readonly capabilities: { derivesAddresses: boolean };
+  readonly capabilities: { derivesAddresses: boolean; preparesTransfers: boolean };
   resolveAddresses(account: AccountDescriptor): Promise<DerivedAddress[]>;
   getReceiveAddress(account: AccountDescriptor, index?: number): Promise<ReceiveAddress>;
   getBalances(addresses: DerivedAddress[]): Promise<Balance[]>;
   getHistory(addresses: DerivedAddress[], opts?: HistoryOptions): Promise<Tx[]>;
+  buildUnsignedTransfer(params: ChainAdapterTransferParams): Promise<UnsignedArtifact>;
 }
 
 export interface MempoolChainStats {
@@ -47,9 +49,16 @@ export interface MempoolTx {
   fee: number;
 }
 
+export interface BtcUtxo {
+  txid: string;
+  vout: number;
+  value: number;
+}
+
 export interface BtcDataProvider {
   getAddress(address: string): Promise<MempoolAddressResponse>;
   getAddressTxs(address: string): Promise<MempoolTx[]>;
+  getUtxos(address: string): Promise<BtcUtxo[]>;
 }
 
 export interface EvmTokenBalance {

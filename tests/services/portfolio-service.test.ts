@@ -5,6 +5,7 @@ import { PortfolioService } from '../../src/services/portfolio-service.js';
 import { Store } from '../../src/db/store.js';
 import type { AccountDescriptor, DerivedAddress } from '../../src/domain/account.js';
 import type { ChainFamily } from '../../src/domain/chains.js';
+import type { ChainAdapterTransferParams, UnsignedArtifact } from '../../src/domain/transfer.js';
 import type { Balance, HistoryOptions, Tx } from '../../src/domain/types.js';
 
 const BTC_ADDR = 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu';
@@ -19,7 +20,7 @@ const btcAccount: AccountDescriptor = {
 
 class FakeBitcoinAdapter implements ChainAdapter {
   readonly family: ChainFamily = 'bitcoin';
-  readonly capabilities = { derivesAddresses: false };
+  readonly capabilities = { derivesAddresses: false, preparesTransfers: false };
 
   constructor(
     private readonly opts: {
@@ -68,6 +69,10 @@ class FakeBitcoinAdapter implements ChainAdapter {
         confirmed: true,
       },
     ];
+  }
+
+  async buildUnsignedTransfer(_params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
+    throw new Error('buildUnsignedTransfer not implemented for this chain yet');
   }
 }
 
@@ -210,7 +215,7 @@ describe('PortfolioService', () => {
 
   it('globally orders, dedupes, and limits merged cross-chain history', async () => {
     class HistoryAdapter implements ChainAdapter {
-      readonly capabilities = { derivesAddresses: false };
+      readonly capabilities = { derivesAddresses: false, preparesTransfers: false };
 
       constructor(
         readonly family: ChainFamily,
@@ -243,6 +248,10 @@ describe('PortfolioService', () => {
 
       async getHistory(addresses: DerivedAddress[]): Promise<Tx[]> {
         return addresses.flatMap((address) => this.txsByAddress.get(address.address) ?? []);
+      }
+
+      async buildUnsignedTransfer(_params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
+        throw new Error('buildUnsignedTransfer not implemented for this chain yet');
       }
     }
 

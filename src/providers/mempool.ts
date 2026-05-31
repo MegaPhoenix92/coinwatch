@@ -1,5 +1,6 @@
 import type {
   BtcDataProvider,
+  BtcUtxo,
   MempoolAddressResponse,
   MempoolTx,
 } from '../adapters/chain-adapter.js';
@@ -62,5 +63,9 @@ export class MempoolProvider implements BtcDataProvider {
       this.resilience,
     );
     return (await res.json()) as MempoolTx[];
+  }
+
+  async getUtxos(_address: string): Promise<BtcUtxo[]> {
+    return [];
   }
 }

@@ -72,6 +72,10 @@ class FakeBtcProvider implements BtcDataProvider {
   async getAddressTxs(_address: string): Promise<MempoolTx[]> {
     return this.txs;
   }
+
+  async getUtxos(_address: string) {
+    return [];
+  }
 }
 
 function literalAccount(addresses: string[]): AccountDescriptor {

@@ -1,5 +1,6 @@
 import { deriveAddresses } from '../core/btc-derive.js';
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
+import type { ChainAdapterTransferParams, UnsignedArtifact } from '../domain/transfer.js';
 import type { Balance, HistoryOptions, Tx } from '../domain/types.js';
 import type {
   BtcDataProvider,
@@ -102,7 +103,7 @@ function txForWatchedSet(tx: MempoolTx, watched: Set<string>): Tx | undefined {
 
 export class BitcoinAdapter implements ChainAdapter {
   readonly family = 'bitcoin' as const;
-  readonly capabilities = { derivesAddresses: true } as const;
+  readonly capabilities = { derivesAddresses: true, preparesTransfers: false } as const;
 
   constructor(private readonly provider: BtcDataProvider) {}
 
@@ -203,5 +204,9 @@ export class BitcoinAdapter implements ChainAdapter {
 
     const limit = opts?.limit;
     return typeof limit === 'number' ? history.slice(0, limit) : history;
+  }
+
+  async buildUnsignedTransfer(_params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
+    throw new Error('buildUnsignedTransfer not implemented for this chain yet');
   }
 }

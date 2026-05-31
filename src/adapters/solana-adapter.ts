@@ -6,6 +6,7 @@ import type {
   SolRawTx,
 } from './chain-adapter.js';
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
+import type { ChainAdapterTransferParams, UnsignedArtifact } from '../domain/transfer.js';
 import type { Balance, HistoryOptions, Tx } from '../domain/types.js';
 import {
   SOL_TOKEN_2022_PROGRAM,
@@ -224,7 +225,7 @@ function unknownTx(raw: SolRawTx): Tx {
 
 export class SolanaAdapter implements ChainAdapter {
   readonly family = 'solana' as const;
-  readonly capabilities = { derivesAddresses: false } as const;
+  readonly capabilities = { derivesAddresses: false, preparesTransfers: false } as const;
 
   constructor(private readonly provider: SolDataProvider) {}
 
@@ -327,5 +328,9 @@ export class SolanaAdapter implements ChainAdapter {
         return ta === tb ? 0 : tb - ta;
       })
       .slice(0, limit);
+  }
+
+  async buildUnsignedTransfer(_params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
+    throw new Error('buildUnsignedTransfer not implemented for this chain yet');
   }
 }

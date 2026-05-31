@@ -7,6 +7,7 @@ import type {
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
 import { EVM_CHAINS, type Chain, type EvmChain } from '../domain/chains.js';
 import { assetBySymbol, nativeAsset, tokensForChain, type AssetSymbol } from '../domain/assets.js';
+import type { ChainAdapterTransferParams, UnsignedArtifact } from '../domain/transfer.js';
 import type { Balance, HistoryOptions, Tx } from '../domain/types.js';
 
 const RECEIVE_NOTE =
@@ -107,7 +108,7 @@ function groupToTx(group: TransferGroup): Tx {
 
 export class EvmAdapter implements ChainAdapter {
   readonly family = 'evm' as const;
-  readonly capabilities = { derivesAddresses: false } as const;
+  readonly capabilities = { derivesAddresses: false, preparesTransfers: false } as const;
 
   constructor(private readonly provider: EvmDataProvider) {}
 
@@ -251,5 +252,9 @@ export class EvmAdapter implements ChainAdapter {
         return ta === tb ? 0 : tb - ta;
       })
       .slice(0, limit);
+  }
+
+  async buildUnsignedTransfer(_params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
+    throw new Error('buildUnsignedTransfer not implemented for this chain yet');
   }
 }
