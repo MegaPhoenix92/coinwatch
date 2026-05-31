@@ -1,17 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { assertSendable, parseFeeRate, toBaseUnits } from '../../src/core/preflight.js';
 
+const BTC_TO = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
+
 describe('transfer preflight', () => {
   it('rejects non-positive and dust amounts, accepts a normal amount', () => {
-    expect(() => assertSendable({ chain: 'bitcoin', asset: 'BTC', rawAmount: 0n })).toThrow(
-      /amount must be positive/i,
-    );
-    expect(() => assertSendable({ chain: 'bitcoin', asset: 'BTC', rawAmount: 100n })).toThrow(
-      /dust/i,
-    );
     expect(() =>
-      assertSendable({ chain: 'bitcoin', asset: 'BTC', rawAmount: 50_000n }),
+      assertSendable({ chain: 'bitcoin', asset: 'BTC', to: BTC_TO, rawAmount: 0n }),
+    ).toThrow(/amount must be positive/i);
+    expect(() =>
+      assertSendable({ chain: 'bitcoin', asset: 'BTC', to: BTC_TO, rawAmount: 100n }),
+    ).toThrow(/dust/i);
+    expect(() =>
+      assertSendable({ chain: 'bitcoin', asset: 'BTC', to: BTC_TO, rawAmount: 50_000n }),
     ).not.toThrow();
+  });
+
+  it('rejects assets unsupported on the requested chain', () => {
+    expect(() =>
+      assertSendable({ chain: 'bitcoin', asset: 'ETH', to: BTC_TO, rawAmount: 50_000n }),
+    ).toThrow(/Asset ETH is not available on bitcoin/);
   });
 
   it('converts decimal amounts to base units and rejects over-precision', () => {

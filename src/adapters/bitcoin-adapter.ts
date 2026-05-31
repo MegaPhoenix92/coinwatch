@@ -222,7 +222,7 @@ export class BitcoinAdapter implements ChainAdapter {
     if (params.asset !== 'BTC') {
       throw new Error('Bitcoin transfers support only native BTC in Phase 2.');
     }
-    assertSendable({ chain: 'bitcoin', asset: 'BTC', rawAmount: params.rawAmount });
+    assertSendable({ chain: 'bitcoin', asset: 'BTC', to: params.to, rawAmount: params.rawAmount });
 
     const addresses = await this.resolveAddresses(params.account);
     const watched = addresses.map((address) => address.address);

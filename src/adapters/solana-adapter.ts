@@ -409,7 +409,12 @@ export class SolanaAdapter implements ChainAdapter {
     if (params.chain !== 'solana') {
       throw new Error(`SolanaAdapter cannot prepare transfers for ${params.chain}.`);
     }
-    assertSendable({ chain: 'solana', asset: params.asset, rawAmount: params.rawAmount });
+    assertSendable({
+      chain: 'solana',
+      asset: params.asset,
+      to: params.to,
+      rawAmount: params.rawAmount,
+    });
 
     const native = nativeAsset('solana');
     const from = pubkeysOf(params.account)[0];

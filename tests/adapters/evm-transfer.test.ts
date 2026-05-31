@@ -25,6 +25,7 @@ const account = {
 
 class FakeEvmProvider implements EvmDataProvider {
   readonly gasRequests: EvmGasEstimateRequest[] = [];
+  readonly calls = { getTransactionCount: 0, estimateGas: 0, getFeesPerGas: 0, getChainId: 0 };
 
   async getNativeBalance(): Promise<bigint> {
     return 0n;
@@ -39,19 +40,23 @@ class FakeEvmProvider implements EvmDataProvider {
   }
 
   async getTransactionCount(): Promise<number> {
+    this.calls.getTransactionCount += 1;
     return 7;
   }
 
   async estimateGas(_chain: EvmChain, req: EvmGasEstimateRequest): Promise<bigint> {
+    this.calls.estimateGas += 1;
     this.gasRequests.push(req);
     return req.data === undefined ? 21_000n : 65_000n;
   }
 
   async getFeesPerGas(): Promise<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }> {
+    this.calls.getFeesPerGas += 1;
     return { maxFeePerGas: 30_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n };
   }
 
   getChainId(): number {
+    this.calls.getChainId += 1;
     return 1;
   }
 }
@@ -156,5 +161,58 @@ describe('EvmAdapter.buildUnsignedTransfer', () => {
     // rawFee = gas (21_000 native) * maxFeePerGas (30 gwei in wei).
     expect(artifact.summary.rawFee).toBe((21_000n * 30_000_000_000n).toString());
     expectUnsigned(parsed);
+  });
+
+  it('rejects invalid recipients before reading provider data', async () => {
+    const provider = new FakeEvmProvider();
+    const adapter = new EvmAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'ethereum',
+        to: '0xzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz',
+        asset: 'ETH',
+        rawAmount: 1_000_000_000_000_000n,
+      }),
+    ).rejects.toThrow(/Invalid ethereum recipient address/);
+    expect(provider.calls).toEqual({
+      getTransactionCount: 0,
+      estimateGas: 0,
+      getFeesPerGas: 0,
+      getChainId: 0,
+    });
+    expect(provider.gasRequests).toEqual([]);
+  });
+
+  it('rejects wrong-chain and unsupported-asset requests before reading provider data', async () => {
+    const provider = new FakeEvmProvider();
+    const adapter = new EvmAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'solana',
+        to: '11111111111111111111111111111112',
+        asset: 'SOL',
+        rawAmount: 1_000_000n,
+      }),
+    ).rejects.toThrow(/not an EVM chain/);
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'ethereum',
+        to: TO,
+        asset: 'POL',
+        rawAmount: 1_000_000_000_000_000n,
+      }),
+    ).rejects.toThrow(/Asset POL is not available on ethereum/);
+    expect(provider.calls).toEqual({
+      getTransactionCount: 0,
+      estimateGas: 0,
+      getFeesPerGas: 0,
+      getChainId: 0,
+    });
+    expect(provider.gasRequests).toEqual([]);
   });
 });

@@ -40,6 +40,27 @@ const fake: BtcDataProvider = {
   },
 };
 
+function trackingBtcProvider(): BtcDataProvider & {
+  calls: { getAddress: number; getAddressTxs: number; getUtxos: number };
+} {
+  const calls = { getAddress: 0, getAddressTxs: 0, getUtxos: 0 };
+  return {
+    calls,
+    async getAddress(): Promise<MempoolAddressResponse> {
+      calls.getAddress += 1;
+      return fake.getAddress(WATCHED);
+    },
+    async getAddressTxs(): Promise<MempoolTx[]> {
+      calls.getAddressTxs += 1;
+      return [];
+    },
+    async getUtxos(): Promise<BtcUtxo[]> {
+      calls.getUtxos += 1;
+      return [{ txid: INPUT_TXID, vout: 0, value: 200_000 }];
+    },
+  };
+}
+
 describe('BitcoinAdapter.buildUnsignedTransfer', () => {
   it('builds an unsigned PSBT with change, fee, and verification summary', async () => {
     const adapter = new BitcoinAdapter(fake);
@@ -103,5 +124,47 @@ describe('BitcoinAdapter.buildUnsignedTransfer', () => {
         feeRate: 2n,
       }),
     ).rejects.toThrow(/native-SegWit|P2WPKH/i);
+  });
+
+  it('rejects invalid recipients before reading provider data', async () => {
+    const provider = trackingBtcProvider();
+    const adapter = new BitcoinAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'bitcoin',
+        to: 'not-a-bitcoin-address',
+        asset: 'BTC',
+        rawAmount: 50_000n,
+        feeRate: 2n,
+      }),
+    ).rejects.toThrow(/Invalid bitcoin recipient address/);
+    expect(provider.calls).toEqual({ getAddress: 0, getAddressTxs: 0, getUtxos: 0 });
+  });
+
+  it('rejects wrong-chain and unsupported-asset requests before reading provider data', async () => {
+    const provider = trackingBtcProvider();
+    const adapter = new BitcoinAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'ethereum',
+        to: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+        asset: 'BTC',
+        rawAmount: 50_000n,
+      }),
+    ).rejects.toThrow(/cannot prepare transfers for ethereum/);
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'bitcoin',
+        to: RECIPIENT,
+        asset: 'ETH',
+        rawAmount: 50_000n,
+      }),
+    ).rejects.toThrow(/support only native BTC/);
+    expect(provider.calls).toEqual({ getAddress: 0, getAddressTxs: 0, getUtxos: 0 });
   });
 });

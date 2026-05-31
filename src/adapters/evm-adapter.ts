@@ -269,10 +269,15 @@ export class EvmAdapter implements ChainAdapter {
   }
 
   async buildUnsignedTransfer(params: ChainAdapterTransferParams): Promise<UnsignedArtifact> {
-    assertSendable({ chain: params.chain, asset: params.asset, rawAmount: params.rawAmount });
     if (!isEvmChain(params.chain)) {
       throw new Error(`${params.chain} is not an EVM chain.`);
     }
+    assertSendable({
+      chain: params.chain,
+      asset: params.asset,
+      to: params.to,
+      rawAmount: params.rawAmount,
+    });
 
     const from =
       params.account.source.kind === 'addresses' ? params.account.source.addresses[0] : undefined;
