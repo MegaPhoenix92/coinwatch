@@ -105,12 +105,20 @@ export class PortfolioService {
         continue;
       }
 
-      const addresses = await adapter.resolveAddresses(account);
-      const txs = await adapter.getHistory(addresses, opts);
-      if (this.store !== undefined) {
-        this.store.cacheTxs(txs);
+      try {
+        const addresses = await adapter.resolveAddresses(account);
+        const txs = await adapter.getHistory(addresses, opts);
+        if (this.store !== undefined) {
+          this.store.cacheTxs(txs);
+        }
+        out.push(...txs);
+      } catch {
+        // Degrade rather than crash: skip this account's history on provider failure,
+        // matching getPortfolio's resilience. getHistory returns Tx[] with no warnings
+        // channel yet; warning-surfacing is completed when the get_history MCP tool
+        // envelope is built (#51).
+        continue;
       }
-      out.push(...txs);
     }
 
     const limit = opts?.limit;

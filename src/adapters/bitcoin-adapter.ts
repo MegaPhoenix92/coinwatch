@@ -194,7 +194,12 @@ export class BitcoinAdapter implements ChainAdapter {
     const history = [...txsById.values()]
       .map((tx) => txForWatchedSet(tx, watched))
       .filter((tx): tx is Tx => tx !== undefined)
-      .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+      .sort((a, b) => {
+        // Unconfirmed txs (no block_time) are the newest — sort them to the top.
+        const ta = a.timestamp ?? Number.POSITIVE_INFINITY;
+        const tb = b.timestamp ?? Number.POSITIVE_INFINITY;
+        return ta === tb ? 0 : tb - ta;
+      });
 
     const limit = opts?.limit;
     return typeof limit === 'number' ? history.slice(0, limit) : history;

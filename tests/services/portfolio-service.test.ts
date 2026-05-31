@@ -207,4 +207,31 @@ describe('PortfolioService', () => {
 
     store.close();
   });
+
+  it('keeps history from other accounts when one adapter getHistory fails', async () => {
+    const failAccount: AccountDescriptor = { ...btcAccount, id: 'acct-fail' };
+    const flakyAdapter = new (class extends FakeBitcoinAdapter {
+      override async resolveAddresses(account: AccountDescriptor): Promise<DerivedAddress[]> {
+        return [
+          {
+            address: account.id === 'acct-fail' ? 'bc1qfailedaddressxxxxxxxxxxxxxxxxxxxxxx' : BTC_ADDR,
+            chain: 'bitcoin',
+            derived: false,
+          },
+        ];
+      }
+
+      override async getHistory(addresses: DerivedAddress[], opts?: HistoryOptions): Promise<Tx[]> {
+        if (addresses[0]?.address.startsWith('bc1qfailed')) {
+          throw new Error('fixture provider unavailable');
+        }
+        return super.getHistory(addresses, opts);
+      }
+    })();
+
+    const txs = await serviceWithAdapter(flakyAdapter).getHistory([btcAccount, failAccount]);
+
+    expect(txs).toHaveLength(1);
+    expect(txs[0].txid).toBe('deadbeef');
+  });
 });
