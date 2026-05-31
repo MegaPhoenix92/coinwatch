@@ -13,6 +13,8 @@ import { MempoolProvider } from '../../src/providers/mempool.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ADDRESS = 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu';
+const CHANGE_ADDRESS = 'bc1qchangeaddressxxxxxxxxxxxxxxxxxxxxxxxxxx';
+const RECIPIENT_ADDRESS = 'bc1qrecipientxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
 const ACCOUNT_ZPUB =
   'zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs';
 
@@ -32,7 +34,7 @@ const inboundTx: MempoolTx = {
   ],
   vout: [
     { scriptpubkey_address: ADDRESS, value: 12000000 },
-    { scriptpubkey_address: 'bc1qchangeaddressxxxxxxxxxxxxxxxxxxxxxxxxxx', value: 7999000 },
+    { scriptpubkey_address: 'bc1qunwatchedchangeaddressxxxxxxxxxxxxxxxx', value: 7999000 },
   ],
   status: { confirmed: true, block_time: 1700000000 },
   fee: 1000,
@@ -42,8 +44,8 @@ const outboundTx: MempoolTx = {
   txid: 'b1b2c3d4e5f600000000000000000000000000000000000000000000000000ff',
   vin: [{ prevout: { scriptpubkey_address: ADDRESS, value: 50000000 } }],
   vout: [
-    { scriptpubkey_address: 'bc1qrecipientxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', value: 30000000 },
-    { scriptpubkey_address: 'bc1qchangeaddressxxxxxxxxxxxxxxxxxxxxxxxxxx', value: 19999000 },
+    { scriptpubkey_address: RECIPIENT_ADDRESS, value: 30000000 },
+    { scriptpubkey_address: CHANGE_ADDRESS, value: 19999000 },
   ],
   status: { confirmed: true, block_time: 1700000100 },
   fee: 1000,
@@ -52,16 +54,19 @@ const outboundTx: MempoolTx = {
 const selfTx: MempoolTx = {
   txid: 'c1b2c3d4e5f600000000000000000000000000000000000000000000000000ff',
   vin: [{ prevout: { scriptpubkey_address: ADDRESS, value: 10000000 } }],
-  vout: [{ scriptpubkey_address: ADDRESS, value: 9999000 }],
+  vout: [{ scriptpubkey_address: CHANGE_ADDRESS, value: 9999000 }],
   status: { confirmed: true, block_time: 1700000200 },
   fee: 1000,
 };
 
 class FakeBtcProvider implements BtcDataProvider {
-  constructor(private readonly txs: MempoolTx[] = [inboundTx]) {}
+  constructor(
+    private readonly txs: MempoolTx[] = [inboundTx],
+    private readonly addressResponse: MempoolAddressResponse = fixture,
+  ) {}
 
   async getAddress(address: string): Promise<MempoolAddressResponse> {
-    return { ...fixture, address };
+    return { ...this.addressResponse, address };
   }
 
   async getAddressTxs(_address: string): Promise<MempoolTx[]> {
@@ -135,7 +140,8 @@ describe('BitcoinAdapter', () => {
     const adapter = new BitcoinAdapter(new FakeBtcProvider());
 
     const two = await adapter.resolveAddresses(xpubAccount(2));
-    expect(two).toEqual([
+    expect(two).toHaveLength(4);
+    expect(two.slice(0, 2)).toEqual([
       { address: ADDRESS, chain: 'bitcoin', path: "m/84'/0'/0'/0/0", derived: true },
       {
         address: 'bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g',
@@ -144,9 +150,14 @@ describe('BitcoinAdapter', () => {
         derived: true,
       },
     ]);
+    expect(two[2]?.path).toBe("m/84'/0'/0'/1/0");
+    expect(two[2]?.derived).toBe(true);
+    expect(two[3]?.path).toBe("m/84'/0'/0'/1/1");
 
     const defaultGap = await adapter.resolveAddresses(xpubAccount());
-    expect(defaultGap).toHaveLength(20);
+    expect(defaultGap).toHaveLength(40);
+    expect(defaultGap.filter((address) => address.path?.includes('/0/'))).toHaveLength(20);
+    expect(defaultGap.filter((address) => address.path?.includes('/1/'))).toHaveLength(20);
   });
 
   it('getReceiveAddress returns literal and derived addresses with verify notes', async () => {
@@ -177,24 +188,41 @@ describe('BitcoinAdapter', () => {
         symbol: 'BTC',
         raw: 10007599040n,
         decimals: 8,
+        pendingRaw: 0n,
       },
     ]);
   });
 
-  it('getHistory maps inbound, outbound, and self transactions with net deltas', async () => {
+  it('getBalances surfaces mempool_stats as pendingRaw', async () => {
+    const pendingFixture: MempoolAddressResponse = {
+      ...fixture,
+      mempool_stats: { funded_txo_sum: 8000, spent_txo_sum: 3000, tx_count: 2 },
+    };
+    const adapter = new BitcoinAdapter(new FakeBtcProvider([], pendingFixture));
+    const balances = await adapter.getBalances([
+      { address: ADDRESS, chain: 'bitcoin', derived: false },
+    ]);
+
+    expect(balances[0]).toMatchObject({ pendingRaw: 5000n });
+  });
+
+  it('getHistory groups txs by txid across watched addresses, maps net deltas, and sorts newest first', async () => {
     const adapter = new BitcoinAdapter(new FakeBtcProvider([inboundTx, outboundTx, selfTx]));
-    const addresses: DerivedAddress[] = [{ address: ADDRESS, chain: 'bitcoin', derived: false }];
+    const addresses: DerivedAddress[] = [
+      { address: ADDRESS, chain: 'bitcoin', derived: false },
+      { address: CHANGE_ADDRESS, chain: 'bitcoin', derived: false, path: "m/84'/0'/0'/1/0" },
+    ];
 
     const history = await adapter.getHistory(addresses);
 
     expect(history).toEqual([
       {
         chain: 'bitcoin',
-        txid: inboundTx.txid,
-        timestamp: 1700000000,
-        direction: 'in',
+        txid: selfTx.txid,
+        timestamp: 1700000200,
+        direction: 'self',
         symbol: 'BTC',
-        raw: 12000000n,
+        raw: 1000n,
         decimals: 8,
         confirmed: true,
       },
@@ -204,18 +232,20 @@ describe('BitcoinAdapter', () => {
         timestamp: 1700000100,
         direction: 'out',
         symbol: 'BTC',
-        raw: 50000000n,
+        raw: 30001000n,
         decimals: 8,
+        counterparty: RECIPIENT_ADDRESS,
         confirmed: true,
       },
       {
         chain: 'bitcoin',
-        txid: selfTx.txid,
-        timestamp: 1700000200,
-        direction: 'self',
+        txid: inboundTx.txid,
+        timestamp: 1700000000,
+        direction: 'in',
         symbol: 'BTC',
-        raw: 1000n,
+        raw: 12000000n,
         decimals: 8,
+        counterparty: 'bc1qothersenderaddressxxxxxxxxxxxxxxxxxxxx',
         confirmed: true,
       },
     ]);
