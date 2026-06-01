@@ -12,6 +12,7 @@ import type {
   EvmRawTransfer,
   ReceiveAddress,
 } from './chain-adapter.js';
+import { inferSelfTransferLeg } from '../core/self-transfer.js';
 import { formatUnits } from '../core/money.js';
 import { assertSendable } from '../core/preflight.js';
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
@@ -116,6 +117,16 @@ function groupToTx(group: TransferGroup): Tx {
   };
   if (counterparty !== undefined) {
     tx.counterparty = counterparty;
+  }
+  if (direction === 'self') {
+    const leg = inferSelfTransferLeg({
+      watchedIncoming: group.incoming,
+      watchedOutgoing: group.outgoing,
+      net,
+    });
+    if (leg !== undefined) {
+      tx.selfTransferLeg = leg;
+    }
   }
   return tx;
 }

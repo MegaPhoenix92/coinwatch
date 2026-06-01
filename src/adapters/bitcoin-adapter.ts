@@ -2,6 +2,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { base64, hex } from '@scure/base';
 import * as btc from '@scure/btc-signer';
 import { deriveAddresses } from '../core/btc-derive.js';
+import { inferSelfTransferLeg } from '../core/self-transfer.js';
 import { formatUnits } from '../core/money.js';
 import { assertSendable } from '../core/preflight.js';
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
@@ -106,6 +107,16 @@ function txForWatchedSet(tx: MempoolTx, watched: Set<string>): Tx | undefined {
   };
   if (counterparty !== undefined) {
     mapped.counterparty = counterparty;
+  }
+  if (direction === 'self') {
+    const leg = inferSelfTransferLeg({
+      watchedIncoming: received,
+      watchedOutgoing: sent,
+      net,
+    });
+    if (leg !== undefined) {
+      mapped.selfTransferLeg = leg;
+    }
   }
   return mapped;
 }

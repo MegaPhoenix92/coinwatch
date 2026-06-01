@@ -69,8 +69,22 @@ describe('computePnl', () => {
         event({ accountId: 'A', direction: 'in', rawAmount: 1n * BTC, date: JAN_1, txid: 'buy-1' }),
         event({ accountId: 'A', direction: 'in', rawAmount: 2n * BTC, date: FEB_1, txid: 'buy-2' }),
         event({ accountId: 'A', direction: 'out', rawAmount: 150_000_000n, date: MAR_1, txid: 'sell-1' }),
-        event({ accountId: 'A', direction: 'self', rawAmount: 50_000_000n, date: APR_1, txid: 'move-1' }),
-        event({ accountId: 'B', direction: 'self', rawAmount: 50_000_000n, date: APR_1, txid: 'move-1' }),
+        event({
+          accountId: 'A',
+          direction: 'self',
+          selfTransferLeg: 'out',
+          rawAmount: 50_000_000n,
+          date: APR_1,
+          txid: 'move-1',
+        }),
+        event({
+          accountId: 'B',
+          direction: 'self',
+          selfTransferLeg: 'in',
+          rawAmount: 50_000_000n,
+          date: APR_1,
+          txid: 'move-1',
+        }),
       ],
       {
         priceProvider: provider,
@@ -141,8 +155,22 @@ describe('computePnl', () => {
       [
         event({ accountId: 'A', direction: 'in', rawAmount: 50_000_000n, date: JAN_1, txid: 'a-old' }),
         event({ accountId: 'B', direction: 'in', rawAmount: 25_000_000n, date: FEB_1, txid: 'b-newer' }),
-        event({ accountId: 'A', direction: 'self', rawAmount: 50_000_000n, date: MAR_1, txid: 'move-old' }),
-        event({ accountId: 'B', direction: 'self', rawAmount: 50_000_000n, date: MAR_1, txid: 'move-old' }),
+        event({
+          accountId: 'A',
+          direction: 'self',
+          selfTransferLeg: 'out',
+          rawAmount: 50_000_000n,
+          date: MAR_1,
+          txid: 'move-old',
+        }),
+        event({
+          accountId: 'B',
+          direction: 'self',
+          selfTransferLeg: 'in',
+          rawAmount: 50_000_000n,
+          date: MAR_1,
+          txid: 'move-old',
+        }),
         event({ accountId: 'B', direction: 'out', rawAmount: 50_000_000n, date: APR_1, txid: 'b-sell' }),
       ],
       {
@@ -176,13 +204,66 @@ describe('computePnl', () => {
     ]);
   });
 
-  it('refuses self-transfer moves when either ledger had an excluded acquisition', async () => {
+  it('pairs self-transfers with different raw amounts when out/in legs are explicit', async () => {
+    const report = await computePnl(
+      [
+        event({ accountId: 'A', direction: 'in', rawAmount: 50_000_000n, date: JAN_1, txid: 'a-buy' }),
+        event({
+          accountId: 'A',
+          direction: 'self',
+          selfTransferLeg: 'out',
+          rawAmount: 50_000_000n,
+          date: MAR_1,
+          txid: 'fee-move',
+        }),
+        event({
+          accountId: 'B',
+          direction: 'self',
+          selfTransferLeg: 'in',
+          rawAmount: 49_500_000n,
+          date: MAR_1,
+          txid: 'fee-move',
+        }),
+        event({ accountId: 'B', direction: 'out', rawAmount: 49_500_000n, date: APR_1, txid: 'b-sell' }),
+      ],
+      {
+        priceProvider: priceProvider([
+          ['bitcoin', JAN_1, 10_000],
+          ['bitcoin', APR_1, 30_000],
+        ]),
+        currentUsdPrice: () => 40_000,
+      },
+    );
+
+    expect(report.warnings).toEqual([]);
+    expect(report.realizedRows[0]).toMatchObject({
+      accountId: 'B',
+      basisUsd: 4_950,
+      disposalTxid: 'b-sell',
+    });
+  });
+
+  it('refuses self-transfer moves when the source ledger had an excluded acquisition', async () => {
     const report = await computePnl(
       [
         event({ accountId: 'A', direction: 'in', rawAmount: 50_000_000n, date: undefined, txid: 'a-undated' }),
         event({ accountId: 'B', direction: 'in', rawAmount: 50_000_000n, date: JAN_1, txid: 'b-balance' }),
-        event({ accountId: 'A', direction: 'self', rawAmount: 50_000_000n, date: MAR_1, txid: 'bad-move' }),
-        event({ accountId: 'B', direction: 'self', rawAmount: 50_000_000n, date: MAR_1, txid: 'bad-move' }),
+        event({
+          accountId: 'A',
+          direction: 'self',
+          selfTransferLeg: 'out',
+          rawAmount: 50_000_000n,
+          date: MAR_1,
+          txid: 'bad-move',
+        }),
+        event({
+          accountId: 'B',
+          direction: 'self',
+          selfTransferLeg: 'in',
+          rawAmount: 50_000_000n,
+          date: MAR_1,
+          txid: 'bad-move',
+        }),
       ],
       {
         priceProvider: priceProvider([['bitcoin', JAN_1, 20_000]]),
@@ -191,7 +272,7 @@ describe('computePnl', () => {
     );
 
     expect(report.warnings.join('\n')).toMatch(/undated:a-undated/);
-    expect(report.warnings.join('\n')).toMatch(/unpaired_self_transfer:bad-move/);
+    expect(report.warnings.join('\n')).toMatch(/unpaired_self_transfer:bad-move: source ledger has excluded events/);
     expect(report.openLots).toHaveLength(1);
     expect(report.openLots[0]).toMatchObject({
       accountId: 'B',
@@ -313,5 +394,25 @@ describe('txToPnlEvents', () => {
         txid: 'seconds-tx',
       },
     ]);
+  });
+
+  it('carries selfTransferLeg from Tx into PnlEvent', () => {
+    const txs: Tx[] = [
+      {
+        chain: 'bitcoin',
+        txid: 'self-tx',
+        timestamp: 1_700_000_000,
+        direction: 'self',
+        selfTransferLeg: 'out',
+        symbol: 'BTC',
+        raw: 50_000_000n,
+        decimals: 8,
+        confirmed: true,
+      },
+    ];
+
+    expect(txToPnlEvents(txs, 'acct')[0]).toMatchObject({
+      selfTransferLeg: 'out',
+    });
   });
 });
