@@ -17,11 +17,12 @@ You supply only **public** xpubs / account descriptors / watch addresses.
 ## Status
 
 Phases 1–3 are implemented as a watch-only CLI agent. It reads configured public account
-descriptors, queries provider APIs through adapter seams, exposes seven watch-only MCP tools, and
+descriptors, queries provider APIs through adapter seams, exposes nine watch-only MCP tools, and
 stores optional local labels / transaction cache entries in `coinwatch.db`. **Phase 2** builds
 unsigned transfer artifacts (BTC/EVM/Solana) with full preflight. **Phase 3** adds historical USD
-prices, per-account FIFO cost-basis/PnL, CSV export, opening-balance lots, and reconciliation
-against external bookkeeping exports. Transaction categorization ([#33](https://github.com/MegaPhoenix92/coinwatch/issues/33)) is deferred as optional polish. coinwatch still never signs or broadcasts.
+prices, per-account FIFO cost-basis/PnL, CSV export, opening-balance lots, reconciliation against
+external bookkeeping exports, and rules-first transaction categorization with manual overrides.
+coinwatch still never signs or broadcasts.
 
 ## Setup
 
@@ -115,9 +116,11 @@ Start the locked-down watch-only agent REPL:
 npx tsx src/cli.ts
 ```
 
-The agent is restricted to the `mcp__coinwatch__*` namespace and exposes exactly seven tools:
-`get_portfolio`, `list_addresses`, `derive_receive_address`, `get_history`, and
-`prepare_transfer`, plus `export_pnl` and `reconcile`. Type `exit` or `quit` to close the REPL.
+The agent is restricted to the `mcp__coinwatch__*` namespace and exposes exactly nine tools:
+`get_portfolio`, `list_addresses`, `derive_receive_address`, `get_history`, `prepare_transfer`,
+`export_pnl`, `reconcile`, plus `set_tx_category_override` and `clear_tx_category_override`.
+`get_history` returns heuristic categories (`transfer`, `fee`, `swap`, `income`, `unknown`) that
+do not change FIFO PnL math. Type `exit` or `quit` to close the REPL.
 
 `prepare_transfer` constructs an unsigned artifact for an external signer and writes it to a
 gitignored `coinwatch-unsigned-*` file. In this slice, BTC returns an unsigned PSBT plus a
@@ -138,7 +141,7 @@ JSON/CSV diff artifacts and never writes back to any bookkeeping system.
 - **Phase 2 — Prepare outbound (done):** per-chain *unsigned* transaction construction + handoff
   to an external signer (verify destination + amount on-device before signing).
 - **Phase 3 — Reporting & bookkeeping (done):** CSV export, cost-basis / PnL, opening balances,
-  reconciliation. Semantic categorization (fees / swaps / income) tracked in #33.
+  reconciliation, transaction categorization with manual overrides.
 
 ## Architecture
 

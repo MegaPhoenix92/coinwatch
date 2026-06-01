@@ -12,6 +12,22 @@ interface BalanceWithPending extends Balance {
   pendingRaw?: bigint;
 }
 
+export function mergeHistoryRows(rows: readonly Tx[], opts?: HistoryOptions): Tx[] {
+  const byKey = new Map<string, Tx>();
+  for (const tx of rows) {
+    byKey.set(`${tx.chain}:${tx.txid}`, tx);
+  }
+
+  const merged = [...byKey.values()].sort((a, b) => {
+    const ta = a.timestamp ?? Number.POSITIVE_INFINITY;
+    const tb = b.timestamp ?? Number.POSITIVE_INFINITY;
+    return ta === tb ? 0 : tb - ta;
+  });
+
+  const limit = opts?.limit;
+  return typeof limit === 'number' ? merged.slice(0, limit) : merged;
+}
+
 export class PortfolioService {
   constructor(
     private readonly adapters: Map<ChainFamily, ChainAdapter>,
@@ -99,7 +115,19 @@ export class PortfolioService {
     return adapter.getReceiveAddress(account, index);
   }
 
+  /** All adapter rows before cross-account merge dedupe (for read-side categorization only). */
+  async collectHistoryRows(accounts: AccountDescriptor[], opts?: HistoryOptions): Promise<Tx[]> {
+    return this.fetchHistoryRows(accounts, opts);
+  }
+
   async getHistory(accounts: AccountDescriptor[], opts?: HistoryOptions): Promise<Tx[]> {
+    return mergeHistoryRows(await this.fetchHistoryRows(accounts, opts), opts);
+  }
+
+  private async fetchHistoryRows(
+    accounts: AccountDescriptor[],
+    opts?: HistoryOptions,
+  ): Promise<Tx[]> {
     const out: Tx[] = [];
     for (const account of accounts) {
       const adapter = this.adapters.get(account.family);
@@ -122,21 +150,7 @@ export class PortfolioService {
         continue;
       }
     }
-
-    const byKey = new Map<string, Tx>();
-    for (const tx of out) {
-      byKey.set(`${tx.chain}:${tx.txid}`, tx);
-    }
-
-    // Provider-side pageKey pagination is out of scope; each provider already fetches up to limit.
-    const merged = [...byKey.values()].sort((a, b) => {
-      const ta = a.timestamp ?? Number.POSITIVE_INFINITY;
-      const tb = b.timestamp ?? Number.POSITIVE_INFINITY;
-      return ta === tb ? 0 : tb - ta;
-    });
-
-    const limit = opts?.limit;
-    return typeof limit === 'number' ? merged.slice(0, limit) : merged;
+    return out;
   }
 
   async prepareTransfer(

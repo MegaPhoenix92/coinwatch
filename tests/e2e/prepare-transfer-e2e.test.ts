@@ -233,6 +233,7 @@ describe('multi-chain prepare_transfer e2e and Phase-2 DoD guards', () => {
     const { service } = buildFixtureStack();
     const names = buildTools(service, accounts).map((mcpTool) => mcpTool.name).sort();
     expect(names).toEqual([
+      'clear_tx_category_override',
       'derive_receive_address',
       'export_pnl',
       'get_history',
@@ -240,6 +241,7 @@ describe('multi-chain prepare_transfer e2e and Phase-2 DoD guards', () => {
       'list_addresses',
       'prepare_transfer',
       'reconcile',
+      'set_tx_category_override',
     ]);
     expect(names.some((name) => /sign|broadcast/i.test(name))).toBe(false);
 

@@ -1,12 +1,14 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import type { PortfolioService } from '../services/portfolio-service.js';
+import { mergeHistoryRows, type PortfolioService } from '../services/portfolio-service.js';
 import type { AccountDescriptor } from '../domain/account.js';
 import type { AssetSymbol } from '../domain/assets.js';
 import type { Chain } from '../domain/chains.js';
 import { assertUtcDateString } from '../domain/historical-price.js';
+import { assertTxCategory, txCategorySchema } from '../domain/categories.js';
 import type { Tx } from '../domain/types.js';
 import type { Store } from '../db/store.js';
+import { categorizeTransactions, type CategorizedTx } from '../core/tx-category.js';
 import type { HistoricalPriceProvider } from '../adapters/chain-adapter.js';
 import type { OpeningBalancesConfig } from '../config/load.js';
 import { pnlReportToCsvBundle, writePnlCsvBundle } from '../reporting/csv-export.js';
@@ -79,11 +81,71 @@ export function buildHandlers(
     },
 
     get_history: async (args: { limit?: number }): Promise<ToolResult> => {
-      // Caching is owned by PortfolioService.getHistory (single write-through path);
-      // the store is used here only for list_addresses labels.
-      const txs = await service.getHistory(accounts, { limit: args.limit });
-      const safe = txs.map((tx: Tx) => ({ ...tx, raw: tx.raw.toString() }));
+      const historyOpts = { limit: args.limit };
+      // Single provider fetch; merge matches PortfolioService.getHistory for PnL parity.
+      const swapDetectionRows = await service.collectHistoryRows(accounts, historyOpts);
+      const txs = mergeHistoryRows(swapDetectionRows, historyOpts);
+      const categorized = categorizeTransactions(
+        txs,
+        store?.getTxCategoryOverrides(),
+        swapDetectionRows,
+      );
+      const safe = categorized.map((tx: CategorizedTx) => ({
+        ...tx,
+        raw: tx.raw.toString(),
+      }));
       return asText(JSON.stringify(safe, null, 2));
+    },
+
+    set_tx_category_override: async (args: {
+      chain: Chain;
+      txid: string;
+      symbol: AssetSymbol;
+      category: string;
+      note?: string;
+    }): Promise<ToolResult> => {
+      if (store === undefined) {
+        throw new Error('Category overrides require a local coinwatch.db store.');
+      }
+      const category = assertTxCategory(args.category);
+      store.setTxCategoryOverride({
+        chain: args.chain,
+        txid: args.txid,
+        symbol: args.symbol,
+        category,
+        note: args.note,
+      });
+      return asText(
+        JSON.stringify(
+          {
+            chain: args.chain,
+            txid: args.txid,
+            symbol: args.symbol,
+            category,
+            note: args.note,
+          },
+          null,
+          2,
+        ),
+      );
+    },
+
+    clear_tx_category_override: async (args: {
+      chain: Chain;
+      txid: string;
+      symbol: AssetSymbol;
+    }): Promise<ToolResult> => {
+      if (store === undefined) {
+        throw new Error('Category overrides require a local coinwatch.db store.');
+      }
+      store.clearTxCategoryOverride(args.chain, args.txid, args.symbol);
+      return asText(
+        JSON.stringify(
+          { chain: args.chain, txid: args.txid, symbol: args.symbol, cleared: true },
+          null,
+          2,
+        ),
+      );
     },
 
     prepare_transfer: async (args: {
@@ -255,6 +317,40 @@ export function buildTools(
             to?: string;
             usdToleranceUsd?: number;
           },
+        ),
+    ),
+    tool(
+      'set_tx_category_override',
+      'Persist a manual transaction category override in the local coinwatch.db. Does not change PnL math; only affects categorized history output.',
+      {
+        chain: z.string(),
+        txid: z.string(),
+        symbol: z.string(),
+        category: txCategorySchema,
+        note: z.string().optional(),
+      },
+      async (args) =>
+        handlers.set_tx_category_override(
+          args as {
+            chain: Chain;
+            txid: string;
+            symbol: AssetSymbol;
+            category: string;
+            note?: string;
+          },
+        ),
+    ),
+    tool(
+      'clear_tx_category_override',
+      'Remove a manual transaction category override from the local coinwatch.db.',
+      {
+        chain: z.string(),
+        txid: z.string(),
+        symbol: z.string(),
+      },
+      async (args) =>
+        handlers.clear_tx_category_override(
+          args as { chain: Chain; txid: string; symbol: AssetSymbol },
         ),
     ),
   ];

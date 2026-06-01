@@ -4,9 +4,10 @@ import type { ReceiveAddress } from '../../src/adapters/chain-adapter.js';
 import type { AccountDescriptor, DerivedAddress } from '../../src/domain/account.js';
 import { VERIFY_NOTE, type UnsignedArtifact } from '../../src/domain/transfer.js';
 import type { PortfolioView, Tx } from '../../src/domain/types.js';
+import Database from 'better-sqlite3';
 import { buildHandlers, buildTools } from '../../src/mcp/tools.js';
+import { Store } from '../../src/db/store.js';
 import type { PortfolioService } from '../../src/services/portfolio-service.js';
-import type { Store } from '../../src/db/store.js';
 
 const accounts: AccountDescriptor[] = [
   {
@@ -79,14 +80,16 @@ function makeFakeService(): PortfolioService {
     listAddresses: async () => fakeAddresses,
     getReceiveAddress: async () => fakeReceive,
     getHistory: async () => fakeHistory,
+    collectHistoryRows: async () => fakeHistory,
     prepareTransfer: async () => artifact,
   } as unknown as PortfolioService;
 }
 
 describe('buildHandlers', () => {
-  it('exposes exactly the 7 watch-only handlers by name', () => {
+  it('exposes exactly the 9 watch-only handlers by name', () => {
     const handlers = buildHandlers(makeFakeService(), accounts);
     expect(Object.keys(handlers).sort()).toEqual([
+      'clear_tx_category_override',
       'derive_receive_address',
       'export_pnl',
       'get_history',
@@ -94,6 +97,7 @@ describe('buildHandlers', () => {
       'list_addresses',
       'prepare_transfer',
       'reconcile',
+      'set_tx_category_override',
     ]);
   });
 
@@ -119,13 +123,21 @@ describe('buildHandlers', () => {
     expect(result.content[0].text).toContain('signing device before use');
   });
 
-  it('get_history stringifies bigint raw values without throwing', async () => {
+  it('get_history stringifies bigint raw values and includes categories', async () => {
     const handlers = buildHandlers(makeFakeService(), accounts);
     const parsed = JSON.parse((await handlers.get_history({ limit: 10 })).content[0].text) as Array<
-      Omit<Tx, 'raw'> & { raw: string }
+      Omit<Tx, 'raw'> & {
+        raw: string;
+        category: string;
+        categorySource: string;
+        categoryReason?: string;
+      }
     >;
     expect(parsed[0]?.raw).toBe('50000000');
     expect(typeof parsed[0]?.raw).toBe('string');
+    expect(parsed[0]?.category).toBe('unknown');
+    expect(parsed[0]?.categorySource).toBe('heuristic');
+    expect(parsed[0]?.categoryReason).toBe('no_counterparty');
   });
 
   it('prepare_transfer returns an unsigned artifact summary as JSON text', async () => {
@@ -144,9 +156,9 @@ describe('buildHandlers', () => {
 });
 
 describe('buildTools', () => {
-  it('wraps the 7 handlers into SDK tool definitions', () => {
+  it('wraps the 9 handlers into SDK tool definitions', () => {
     const tools = buildTools(makeFakeService(), accounts);
-    expect(tools).toHaveLength(7);
+    expect(tools).toHaveLength(9);
   });
 });
 
@@ -159,8 +171,8 @@ describe('buildHandlers — store-wired (labels)', () => {
 
     const handlers = buildHandlers(makeFakeService(), accounts, fakeStore);
 
-    // still exactly the seven watch-only handlers
     expect(Object.keys(handlers).sort()).toEqual([
+      'clear_tx_category_override',
       'derive_receive_address',
       'export_pnl',
       'get_history',
@@ -168,6 +180,7 @@ describe('buildHandlers — store-wired (labels)', () => {
       'list_addresses',
       'prepare_transfer',
       'reconcile',
+      'set_tx_category_override',
     ]);
 
     const listed = JSON.parse((await handlers.list_addresses()).content[0].text) as Array<
@@ -182,5 +195,42 @@ describe('buildHandlers — store-wired (labels)', () => {
       DerivedAddress & { label?: string }
     >;
     expect(listed[0]).not.toHaveProperty('label');
+  });
+});
+
+describe('buildHandlers — category overrides', () => {
+  it('persists overrides and returns them from get_history', async () => {
+    const store = new Store(new Database(':memory:'));
+    const handlers = buildHandlers(makeFakeService(), accounts, store);
+
+    await handlers.set_tx_category_override({
+      chain: 'bitcoin',
+      txid: 'abc123',
+      symbol: 'BTC',
+      category: 'income',
+      note: 'mining',
+    });
+
+    const parsed = JSON.parse((await handlers.get_history({ limit: 10 })).content[0].text) as Array<{
+      category: string;
+      categorySource: string;
+      categoryReason?: string;
+    }>;
+    expect(parsed[0]?.category).toBe('income');
+    expect(parsed[0]?.categorySource).toBe('manual');
+    expect(parsed[0]?.categoryReason).toBe('mining');
+
+    await handlers.clear_tx_category_override({
+      chain: 'bitcoin',
+      txid: 'abc123',
+      symbol: 'BTC',
+    });
+    const cleared = JSON.parse((await handlers.get_history({ limit: 10 })).content[0].text) as Array<{
+      category: string;
+      categorySource: string;
+    }>;
+    expect(cleared[0]?.category).toBe('unknown');
+    expect(cleared[0]?.categorySource).toBe('heuristic');
+    store.close();
   });
 });

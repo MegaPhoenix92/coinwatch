@@ -112,9 +112,10 @@ describe('no-signing static gate', () => {
     });
   });
 
-  it('exposes exactly the seven watch-only MCP tools', () => {
+  it('exposes exactly the nine watch-only MCP tools', () => {
     const names = buildTools(service, accounts).map((tool) => tool.name).sort();
     expect(names).toEqual([
+      'clear_tx_category_override',
       'derive_receive_address',
       'export_pnl',
       'get_history',
@@ -122,6 +123,7 @@ describe('no-signing static gate', () => {
       'list_addresses',
       'prepare_transfer',
       'reconcile',
+      'set_tx_category_override',
     ]);
     expect(names.some((name) => /sign|broadcast/i.test(name))).toBe(false);
   });

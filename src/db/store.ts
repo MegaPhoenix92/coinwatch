@@ -7,7 +7,9 @@ import {
   type HistoricalUsdPrice,
   type UtcDateString,
 } from '../domain/historical-price.js';
+import { assertTxCategory } from '../domain/categories.js';
 import type { Tx } from '../domain/types.js';
+import { txCategoryRowKey, type TxCategoryOverrideRow } from '../core/tx-category.js';
 
 interface TxRow {
   json: string;
@@ -57,6 +59,15 @@ CREATE TABLE IF NOT EXISTS price_history (
   source TEXT,
   fetched_at INTEGER,
   PRIMARY KEY (coingecko_id, date)
+) STRICT;
+CREATE TABLE IF NOT EXISTS tx_category_overrides (
+  chain TEXT,
+  txid TEXT,
+  symbol TEXT,
+  category TEXT,
+  note TEXT,
+  updated_at INTEGER,
+  PRIMARY KEY (chain, txid, symbol)
 ) STRICT;
 `;
 
@@ -148,6 +159,48 @@ export class Store {
       source: row.source,
       date: assertUtcDateString(row.date),
     };
+  }
+
+  setTxCategoryOverride(row: TxCategoryOverrideRow): void {
+    const category = assertTxCategory(row.category);
+    this.db
+      .prepare(
+        'INSERT INTO tx_category_overrides (chain, txid, symbol, category, note, updated_at) ' +
+          'VALUES (?, ?, ?, ?, ?, ?) ' +
+          'ON CONFLICT(chain, txid, symbol) DO UPDATE SET category = excluded.category, note = excluded.note, updated_at = excluded.updated_at',
+      )
+      .run(row.chain, row.txid, row.symbol, category, row.note ?? null, Date.now());
+  }
+
+  clearTxCategoryOverride(chain: Chain, txid: string, symbol: AssetSymbol): void {
+    this.db
+      .prepare('DELETE FROM tx_category_overrides WHERE chain = ? AND txid = ? AND symbol = ?')
+      .run(chain, txid, symbol);
+  }
+
+  getTxCategoryOverrides(): Map<string, TxCategoryOverrideRow> {
+    const rows = this.db
+      .prepare('SELECT chain, txid, symbol, category, note FROM tx_category_overrides')
+      .all() as Array<{
+      chain: Chain;
+      txid: string;
+      symbol: AssetSymbol;
+      category: string;
+      note: string | null;
+    }>;
+
+    const out = new Map<string, TxCategoryOverrideRow>();
+    for (const row of rows) {
+      const parsed: TxCategoryOverrideRow = {
+        chain: row.chain,
+        txid: row.txid,
+        symbol: row.symbol,
+        category: assertTxCategory(row.category),
+        note: row.note ?? undefined,
+      };
+      out.set(txCategoryRowKey(parsed), parsed);
+    }
+    return out;
   }
 
   cacheHistoricalPrice(row: HistoricalPriceCacheRow): void {
