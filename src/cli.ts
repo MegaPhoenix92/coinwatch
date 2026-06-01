@@ -7,7 +7,16 @@ import type { ChainAdapter } from './adapters/chain-adapter.js';
 import { BitcoinAdapter } from './adapters/bitcoin-adapter.js';
 import { EvmAdapter } from './adapters/evm-adapter.js';
 import { SolanaAdapter } from './adapters/solana-adapter.js';
+import {
+  parseConfigCommand,
+  runConfigTemplate,
+  runConfigValidate,
+} from './cli/config-commands.js';
 import { loadAccounts, loadEnv, loadOpeningBalances } from './config/load.js';
+import {
+  DEFAULT_ACCOUNTS_PATH,
+  DEFAULT_OPENING_BALANCES_PATH,
+} from './config/paths.js';
 import { Store } from './db/store.js';
 import { allCoingeckoIds } from './domain/assets.js';
 import type { ChainFamily } from './domain/chains.js';
@@ -162,9 +171,21 @@ export async function* userMessages(): AsyncGenerator<SDKUserMessage> {
 }
 
 export async function main(): Promise<void> {
+  const configCommand = parseConfigCommand(process.argv.slice(2));
+  if (configCommand !== undefined) {
+    if (configCommand.kind === 'validate') {
+      if (!runConfigValidate(configCommand)) {
+        process.exitCode = 1;
+      }
+      return;
+    }
+    runConfigTemplate(configCommand);
+    return;
+  }
+
   const env = loadEnv();
-  const accounts = loadAccounts('config/accounts.local.json');
-  const openingBalances = loadOpeningBalances('config/opening-balances.local.json', accounts);
+  const accounts = loadAccounts(DEFAULT_ACCOUNTS_PATH);
+  const openingBalances = loadOpeningBalances(DEFAULT_OPENING_BALANCES_PATH, accounts);
 
   const adapters = new Map<ChainFamily, ChainAdapter>();
   adapters.set('bitcoin', new BitcoinAdapter(new MempoolProvider()));

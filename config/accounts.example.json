@@ -6,7 +6,7 @@
     "chains": ["bitcoin"],
     "source": {
       "kind": "xpub",
-      "xpub": "zpub6EXAMPLEzpubDONOTUSEreplaceWithYourOwnWatchOnlyXpub00000000000000000000000000000000000000000000000000000000",
+      "xpub": "zpub6FakePubKeyABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789",
       "scriptType": "p2wpkh",
       "gapLimit": 20
     }

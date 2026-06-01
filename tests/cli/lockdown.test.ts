@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseConfigCommand } from '../../src/cli/config-commands.js';
 import { buildQueryOptions, parseExportPnlCommand, parseReconcileCommand } from '../../src/cli.js';
 
 describe('CLI Agent SDK lockdown', () => {
@@ -54,6 +55,16 @@ describe('CLI Agent SDK lockdown', () => {
       limit: 50,
     });
     expect(parseExportPnlCommand([])).toBeUndefined();
+  });
+
+  it('parses config validate without affecting agent lockdown options', () => {
+    expect(parseConfigCommand(['config', 'validate'])).toEqual({
+      kind: 'validate',
+      accountsPath: 'config/accounts.local.json',
+      openingBalancesPath: 'config/opening-balances.local.json',
+      requireOpeningBalances: false,
+    });
+    expect(parseConfigCommand([])).toBeUndefined();
   });
 
   it('parses the direct reconcile command without affecting agent lockdown options', () => {
