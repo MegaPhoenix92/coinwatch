@@ -17,6 +17,8 @@ export interface PnlEvent {
   decimals: number;
   date?: UtcDateString;
   txid: string;
+  declaredUnitBasisUsd?: number;
+  source?: 'chain' | 'manual';
 }
 
 export interface OpenLot {
@@ -29,6 +31,7 @@ export interface OpenLot {
   acquiredDate: UtcDateString;
   acquisitionTxid: string;
   unitBasisUsd: number;
+  source: 'chain' | 'manual';
 }
 
 export interface ConsumedLot {
@@ -37,6 +40,7 @@ export interface ConsumedLot {
   acquisitionTxid: string;
   rawAmount: bigint;
   basisUsd: number;
+  source: 'chain' | 'manual';
 }
 
 export interface RealizedRow {
@@ -229,6 +233,7 @@ function consumeLots(
       acquisitionTxid: lot.acquisitionTxid,
       rawAmount: take,
       basisUsd: consumedBasis,
+      source: lot.source,
     });
     movedLots.push({ ...lot, rawAmount: take });
 
@@ -398,7 +403,11 @@ export async function computePnl(
       continue;
     }
 
-    const price = await historicalUsd(event, opts.priceProvider, warnings);
+    const declaredSource = event.source ?? (event.declaredUnitBasisUsd === undefined ? 'chain' : 'manual');
+    const price =
+      event.direction === 'in' && event.declaredUnitBasisUsd !== undefined
+        ? event.declaredUnitBasisUsd
+        : await historicalUsd(event, opts.priceProvider, warnings);
     if (price === undefined) {
       excludedLedgerKeys.add(ledgerKey(event));
       continue;
@@ -416,6 +425,7 @@ export async function computePnl(
         acquiredDate: event.date,
         acquisitionTxid: event.txid,
         unitBasisUsd: price,
+        source: declaredSource,
       });
       continue;
     }

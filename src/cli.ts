@@ -7,7 +7,7 @@ import type { ChainAdapter } from './adapters/chain-adapter.js';
 import { BitcoinAdapter } from './adapters/bitcoin-adapter.js';
 import { EvmAdapter } from './adapters/evm-adapter.js';
 import { SolanaAdapter } from './adapters/solana-adapter.js';
-import { loadAccounts, loadEnv } from './config/load.js';
+import { loadAccounts, loadEnv, loadOpeningBalances } from './config/load.js';
 import { Store } from './db/store.js';
 import { allCoingeckoIds } from './domain/assets.js';
 import type { ChainFamily } from './domain/chains.js';
@@ -113,6 +113,7 @@ export async function* userMessages(): AsyncGenerator<SDKUserMessage> {
 export async function main(): Promise<void> {
   const env = loadEnv();
   const accounts = loadAccounts('config/accounts.local.json');
+  const openingBalances = loadOpeningBalances('config/opening-balances.local.json', accounts);
 
   const adapters = new Map<ChainFamily, ChainAdapter>();
   adapters.set('bitcoin', new BitcoinAdapter(new MempoolProvider()));
@@ -140,6 +141,7 @@ export async function main(): Promise<void> {
     const pnlExport = {
       priceProvider: historicalPrices,
       currentUsdPrice: (coingeckoId: string) => currentPrices.get(coingeckoId),
+      openingBalances,
     };
     // Single cache owner: PortfolioService write-through caches tx history.
     // The tools layer also receives the store, but only for address labels.

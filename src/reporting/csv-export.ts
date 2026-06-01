@@ -4,13 +4,14 @@ import { formatUnits } from '../core/money.js';
 import { assetBySymbol } from '../domain/assets.js';
 import type { PnlReport } from './pnl.js';
 
-export const SCHEMA_VERSION = '1';
+export const SCHEMA_VERSION = '2';
 
 /**
- * PnL CSV schema v1 exports the computed PnlReport, not raw chain activity.
+ * PnL CSV schema v2 exports the computed PnlReport, not raw chain activity.
  * Files are ledger-shaped: realized disposals, remaining open lots, and
  * warnings. BigInt raw quantities are decimal strings; USD columns are JS
- * number strings from the PnL engine.
+ * number strings from the PnL engine. v2 adds lot source provenance for manual
+ * opening balances and basis overrides.
  */
 const REALIZED_HEADER = [
   'schema_version',
@@ -31,6 +32,7 @@ const REALIZED_HEADER = [
   'consumed_acquisition_txids',
   'consumed_raw_amounts',
   'consumed_basis_usd',
+  'consumed_sources',
 ] as const;
 
 const OPEN_LOTS_HEADER = [
@@ -38,6 +40,7 @@ const OPEN_LOTS_HEADER = [
   'account_id',
   'chain',
   'symbol',
+  'source',
   'quantity_decimal',
   'raw_amount',
   'decimals',
@@ -111,6 +114,7 @@ export function pnlReportToCsvBundle(report: PnlReport): PnlCsvBundle {
           row.consumedLots.map((lot) => lot.acquisitionTxid).join(';'),
           row.consumedLots.map((lot) => lot.rawAmount.toString()).join(';'),
           row.consumedLots.map((lot) => lot.basisUsd).join(';'),
+          row.consumedLots.map((lot) => lot.source).join(';'),
         ]);
       })
       .join('');
@@ -124,6 +128,7 @@ export function pnlReportToCsvBundle(report: PnlReport): PnlCsvBundle {
           lot.accountId,
           lot.chain,
           lot.symbol,
+          lot.source,
           formatUnits(lot.rawAmount, lot.decimals),
           lot.rawAmount.toString(),
           lot.decimals,

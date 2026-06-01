@@ -25,12 +25,12 @@ const emptyReport: PnlReport = {
 describe('pnlReportToCsvBundle', () => {
   it('exports deterministic header-only CSVs for an empty report', () => {
     const bundle = pnlReportToCsvBundle(emptyReport);
-    expect(SCHEMA_VERSION).toBe('1');
+    expect(SCHEMA_VERSION).toBe('2');
     expect(bundle.realizedCsv).toBe(
-      'schema_version,method,date,account_id,chain,symbol,quantity_decimal,raw_disposed,decimals,proceeds_usd,basis_usd,gain_usd,disposal_txid,consumed_lot_ids,consumed_acquired_dates,consumed_acquisition_txids,consumed_raw_amounts,consumed_basis_usd\n',
+      'schema_version,method,date,account_id,chain,symbol,quantity_decimal,raw_disposed,decimals,proceeds_usd,basis_usd,gain_usd,disposal_txid,consumed_lot_ids,consumed_acquired_dates,consumed_acquisition_txids,consumed_raw_amounts,consumed_basis_usd,consumed_sources\n',
     );
     expect(bundle.openLotsCsv).toBe(
-      'schema_version,account_id,chain,symbol,quantity_decimal,raw_amount,decimals,acquired_date,acquisition_txid,unit_basis_usd,basis_usd\n',
+      'schema_version,account_id,chain,symbol,source,quantity_decimal,raw_amount,decimals,acquired_date,acquisition_txid,unit_basis_usd,basis_usd\n',
     );
     expect(bundle.warningsCsv).toBe('schema_version,code,txid,message,raw_warning\n');
   });
@@ -56,6 +56,7 @@ describe('pnlReportToCsvBundle', () => {
               acquisitionTxid: 'buy-1',
               rawAmount: 100_000_000n,
               basisUsd: 10_000,
+              source: 'manual',
             },
             {
               lotId: 'lot-2',
@@ -63,6 +64,7 @@ describe('pnlReportToCsvBundle', () => {
               acquisitionTxid: 'buy-2',
               rawAmount: 50_000_000n,
               basisUsd: 10_000,
+              source: 'chain',
             },
           ],
         },
@@ -78,6 +80,7 @@ describe('pnlReportToCsvBundle', () => {
           acquiredDate: utc('2026-02-01'),
           acquisitionTxid: 'buy-2',
           unitBasisUsd: 20_000,
+          source: 'chain',
         },
       ],
       warnings: ['unpriceable:tx,1: no "price"\nline'],
@@ -86,16 +89,16 @@ describe('pnlReportToCsvBundle', () => {
     const bundle = pnlReportToCsvBundle(report);
 
     expect(bundle.realizedCsv).toBe(
-      'schema_version,method,date,account_id,chain,symbol,quantity_decimal,raw_disposed,decimals,proceeds_usd,basis_usd,gain_usd,disposal_txid,consumed_lot_ids,consumed_acquired_dates,consumed_acquisition_txids,consumed_raw_amounts,consumed_basis_usd\n' +
-        '1,FIFO,2026-03-01,"acct,1",bitcoin,BTC,1.5,150000000,8,45000,20000,25000,"sell""tx",lot-1;lot-2,2026-01-01;2026-02-01,buy-1;buy-2,100000000;50000000,10000;10000\n',
+      'schema_version,method,date,account_id,chain,symbol,quantity_decimal,raw_disposed,decimals,proceeds_usd,basis_usd,gain_usd,disposal_txid,consumed_lot_ids,consumed_acquired_dates,consumed_acquisition_txids,consumed_raw_amounts,consumed_basis_usd,consumed_sources\n' +
+        '2,FIFO,2026-03-01,"acct,1",bitcoin,BTC,1.5,150000000,8,45000,20000,25000,"sell""tx",lot-1;lot-2,2026-01-01;2026-02-01,buy-1;buy-2,100000000;50000000,10000;10000,manual;chain\n',
     );
     expect(bundle.openLotsCsv).toBe(
-      'schema_version,account_id,chain,symbol,quantity_decimal,raw_amount,decimals,acquired_date,acquisition_txid,unit_basis_usd,basis_usd\n' +
-        '1,acct-1,bitcoin,BTC,1.5,150000000,8,2026-02-01,buy-2,20000,30000\n',
+      'schema_version,account_id,chain,symbol,source,quantity_decimal,raw_amount,decimals,acquired_date,acquisition_txid,unit_basis_usd,basis_usd\n' +
+        '2,acct-1,bitcoin,BTC,chain,1.5,150000000,8,2026-02-01,buy-2,20000,30000\n',
     );
     expect(bundle.warningsCsv).toBe(
       'schema_version,code,txid,message,raw_warning\n' +
-        '1,unpriceable,"tx,1","no ""price""\nline","unpriceable:tx,1: no ""price""\nline"\n',
+        '2,unpriceable,"tx,1","no ""price""\nline","unpriceable:tx,1: no ""price""\nline"\n',
     );
   });
 });

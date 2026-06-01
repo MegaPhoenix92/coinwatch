@@ -39,13 +39,18 @@ function btcTx(txid: string, date: string, direction: Tx['direction'], raw: bigi
 }
 
 class FakeHistoricalPriceProvider implements HistoricalPriceProvider {
+  calls: string[] = [];
+
   async getHistoricalUsdPrice(
     coingeckoId: string,
     date: UtcDateString,
   ): Promise<HistoricalUsdPrice | undefined> {
+    this.calls.push(`${coingeckoId}:${date}`);
     const prices = new Map([
       ['bitcoin:2026-01-01', 10_000],
+      ['bitcoin:2026-02-01', 20_000],
       ['bitcoin:2026-03-01', 20_000],
+      ['bitcoin:2026-03-15', 30_000],
       ['bitcoin:2026-04-01', 30_000],
     ]);
     const usd = prices.get(`${coingeckoId}:${date}`);
@@ -99,6 +104,107 @@ describe('computeAccountScopedPnl', () => {
       expect.arrayContaining([
         expect.stringContaining('duplicate_account_address:acct-b:'),
         expect.stringContaining('history_limited:all: limit 10'),
+      ]),
+    );
+  });
+
+  it('reconciles opening lots plus basis overrides without historical lookup for declared basis', async () => {
+    const provider = new FakeHistoricalPriceProvider();
+    const service = {
+      getHistory: async () => [
+        btcTx('visible-buy', '2026-02-01', 'in', 100_000_000n),
+        btcTx('visible-sell', '2026-03-15', 'out', 150_000_000n),
+      ],
+    } as unknown as PortfolioService;
+
+    const report = await computeAccountScopedPnl(service, [accountA], {
+      priceProvider: provider,
+      currentUsdPrice: (id) => (id === 'bitcoin' ? 40_000 : undefined),
+      openingBalances: {
+        openingLots: [
+          {
+            id: 'prehistory-btc',
+            accountId: 'acct-a',
+            chain: 'bitcoin',
+            symbol: 'BTC',
+            rawAmount: 100_000_000n,
+            decimals: 8,
+            acquiredDate: utc('2026-01-01'),
+            totalBasisUsd: 10_000,
+          },
+        ],
+        adjustments: [
+          {
+            type: 'basis_override',
+            accountId: 'acct-a',
+            chain: 'bitcoin',
+            symbol: 'BTC',
+            txid: 'visible-buy',
+            totalBasisUsd: 20_000,
+          },
+        ],
+      },
+    });
+
+    expect(provider.calls).toEqual(['bitcoin:2026-03-15']);
+    expect(report.warnings).toEqual([]);
+    expect(report.realizedRows).toHaveLength(1);
+    expect(report.realizedRows[0]).toMatchObject({
+      disposalTxid: 'visible-sell',
+      proceedsUsd: 45_000,
+      basisUsd: 20_000,
+      gainUsd: 25_000,
+    });
+    expect(report.realizedRows[0].consumedLots.map((lot) => lot.source)).toEqual([
+      'manual',
+      'chain',
+    ]);
+    expect(report.openLots[0]).toMatchObject({
+      acquisitionTxid: 'visible-buy',
+      rawAmount: 50_000_000n,
+      source: 'chain',
+      unitBasisUsd: 20_000,
+    });
+  });
+
+  it('warns when opening balances overlap visible history and overrides do not match', async () => {
+    const service = {
+      getHistory: async () => [btcTx('visible-buy', '2026-02-01', 'in', 100_000_000n)],
+    } as unknown as PortfolioService;
+
+    const report = await computeAccountScopedPnl(service, [accountA], {
+      priceProvider: new FakeHistoricalPriceProvider(),
+      currentUsdPrice: (id) => (id === 'bitcoin' ? 40_000 : undefined),
+      openingBalances: {
+        openingLots: [
+          {
+            id: 'too-late',
+            accountId: 'acct-a',
+            chain: 'bitcoin',
+            symbol: 'BTC',
+            rawAmount: 50_000_000n,
+            decimals: 8,
+            acquiredDate: utc('2026-02-01'),
+            totalBasisUsd: 5_000,
+          },
+        ],
+        adjustments: [
+          {
+            type: 'basis_override',
+            accountId: 'acct-a',
+            chain: 'bitcoin',
+            symbol: 'BTC',
+            txid: 'missing-tx',
+            totalBasisUsd: 10_000,
+          },
+        ],
+      },
+    });
+
+    expect(report.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('opening_balance_overlap:too-late'),
+        expect.stringContaining('basis_override_no_match:missing-tx'),
       ]),
     );
   });
