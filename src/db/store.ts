@@ -1,10 +1,27 @@
 import Database from 'better-sqlite3';
 import type { AssetSymbol } from '../domain/assets.js';
 import type { Chain } from '../domain/chains.js';
+import {
+  assertUtcDateString,
+  type HistoricalPriceSource,
+  type HistoricalUsdPrice,
+  type UtcDateString,
+} from '../domain/historical-price.js';
 import type { Tx } from '../domain/types.js';
 
 interface TxRow {
   json: string;
+}
+
+interface PriceHistoryRow {
+  usd: number;
+  source: HistoricalPriceSource;
+  date: string;
+}
+
+export interface HistoricalPriceCacheRow extends HistoricalUsdPrice {
+  coingeckoId: string;
+  fetchedAt?: number;
 }
 
 interface SerializedTx {
@@ -32,6 +49,14 @@ CREATE TABLE IF NOT EXISTS tx_cache (
   json TEXT,
   fetched_at INTEGER,
   PRIMARY KEY (chain, txid)
+) STRICT;
+CREATE TABLE IF NOT EXISTS price_history (
+  coingecko_id TEXT,
+  date TEXT,
+  usd REAL,
+  source TEXT,
+  fetched_at INTEGER,
+  PRIMARY KEY (coingecko_id, date)
 ) STRICT;
 `;
 
@@ -108,6 +133,30 @@ export class Store {
         confirmed: serialized.confirmed,
       };
     });
+  }
+
+  getHistoricalPrice(coingeckoId: string, date: UtcDateString): HistoricalUsdPrice | undefined {
+    const row = this.db
+      .prepare('SELECT usd, source, date FROM price_history WHERE coingecko_id = ? AND date = ?')
+      .get(coingeckoId, date) as PriceHistoryRow | undefined;
+    if (row === undefined) {
+      return undefined;
+    }
+
+    return {
+      usd: row.usd,
+      source: row.source,
+      date: assertUtcDateString(row.date),
+    };
+  }
+
+  cacheHistoricalPrice(row: HistoricalPriceCacheRow): void {
+    this.db
+      .prepare(
+        'INSERT INTO price_history (coingecko_id, date, usd, source, fetched_at) VALUES (?, ?, ?, ?, ?) ' +
+          'ON CONFLICT(coingecko_id, date) DO UPDATE SET usd = excluded.usd, source = excluded.source, fetched_at = excluded.fetched_at',
+      )
+      .run(row.coingeckoId, row.date, row.usd, row.source, row.fetchedAt ?? Date.now());
   }
 
   close(): void {

@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import { Store } from '../../src/db/store.js';
+import { assertUtcDateString } from '../../src/domain/historical-price.js';
 import type { Tx } from '../../src/domain/types.js';
 
 describe('Store', () => {
@@ -94,6 +95,28 @@ describe('Store', () => {
     expect(store.getCachedTxs('bitcoin')).toHaveLength(1);
     expect(store.getCachedTxs('ethereum')).toHaveLength(1);
     expect(store.getCachedTxs('bitcoin')[0].txid).toBe('b1');
+    store.close();
+  });
+
+  it('round-trips cached historical prices by coingecko id and UTC date', () => {
+    const store = new Store(new Database(':memory:'));
+    const date = assertUtcDateString('2026-01-01');
+
+    expect(store.getHistoricalPrice('bitcoin', date)).toBeUndefined();
+    store.cacheHistoricalPrice({
+      coingeckoId: 'bitcoin',
+      date,
+      usd: 43_000.25,
+      source: 'coingecko',
+      fetchedAt: 1_700_000_000_000,
+    });
+
+    expect(store.getHistoricalPrice('bitcoin', date)).toEqual({
+      usd: 43_000.25,
+      source: 'coingecko',
+      date,
+    });
+    expect(store.getHistoricalPrice('ethereum', date)).toBeUndefined();
     store.close();
   });
 });
