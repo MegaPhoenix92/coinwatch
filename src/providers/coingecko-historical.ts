@@ -69,7 +69,7 @@ export class CoinGeckoHistoricalPriceProvider implements HistoricalPriceProvider
       async (signal) => {
         const response = await this.fetchFn(url, { headers, signal });
         if (!response.ok) {
-          if (response.status === 400 || response.status === 401 || response.status === 403) {
+          if (response.status === 401 || response.status === 403) {
             throw new HistoricalPriceCapabilityError(
               `CoinGecko historical price unavailable for ${coingeckoId} on ${date}: ${response.status} ${response.statusText}`,
             );

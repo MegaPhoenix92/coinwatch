@@ -13,6 +13,7 @@ import {
   CoinGeckoHistoricalPriceProvider,
   coinGeckoHistoryDateParam,
 } from '../../src/providers/coingecko-historical.js';
+import { HttpStatusError } from '../../src/providers/resilience.js';
 
 const DATE = assertUtcDateString('2026-01-01');
 
@@ -66,14 +67,14 @@ describe('CoinGeckoHistoricalPriceProvider', () => {
     await expect(provider.getHistoricalUsdPrice('bitcoin', DATE)).resolves.toBeUndefined();
   });
 
-  it('throws a capability error for out-of-range or unauthorized responses', async () => {
-    for (const status of [400, 403]) {
+  it('throws a capability error for unauthorized responses', async () => {
+    for (const status of [401, 403]) {
       const provider = new CoinGeckoHistoricalPriceProvider({
         fetchFn: (async () =>
           ({
             ok: false,
             status,
-            statusText: status === 400 ? 'Bad Request' : 'Forbidden',
+            statusText: status === 401 ? 'Unauthorized' : 'Forbidden',
           }) as Response) as typeof fetch,
         resilience: { sleep: async () => undefined },
       });
@@ -82,6 +83,25 @@ describe('CoinGeckoHistoricalPriceProvider', () => {
         HistoricalPriceCapabilityError,
       );
     }
+  });
+
+  it('throws HttpStatusError for HTTP 400 client errors', async () => {
+    const provider = new CoinGeckoHistoricalPriceProvider({
+      fetchFn: (async () =>
+        ({
+          ok: false,
+          status: 400,
+          statusText: 'Bad Request',
+        }) as Response) as typeof fetch,
+      resilience: { sleep: async () => undefined },
+    });
+
+    await expect(provider.getHistoricalUsdPrice('bitcoin', DATE)).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof HttpStatusError &&
+        error.status === 400 &&
+        error.message === 'CoinGecko historical 400: Bad Request',
+    );
   });
 
   it('throws provider errors for non-capability HTTP failures', async () => {
