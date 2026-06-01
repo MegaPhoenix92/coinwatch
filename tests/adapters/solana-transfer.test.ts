@@ -12,6 +12,7 @@ import type {
 
 const FROM = '11111111111111111111111111111112';
 const TO = '11111111111111111111111111111113';
+const SOL_RENT_EXEMPT_MIN_LAMPORTS = 890_880n;
 // A real-shaped blockhash DISTINCT from the SystemProgram id, so the
 // lifetimeToken assertion below genuinely exercises blockhash threading.
 // (The all-1s placeholder collides with SystemProgram = staticAccounts[2],
@@ -26,28 +27,10 @@ const account = {
   source: { kind: 'addresses' as const, addresses: [FROM] },
 };
 
-const fake: SolDataProvider = {
-  async getLamports(): Promise<bigint> {
-    return 10_000_000n;
-  },
-  async getTokenAccounts(): Promise<SolTokenAccount[]> {
-    return [];
-  },
-  async getSignatures(): Promise<SolRawTx[]> {
-    return [];
-  },
-  async getTransaction(): Promise<SolRawTx | undefined> {
-    return undefined;
-  },
-  async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }> {
-    return { blockhash: BLOCKHASH, lastValidBlockHeight: 123n };
-  },
-  async getAccountExists(): Promise<boolean> {
-    return true;
-  },
-};
-
-function trackingSolProvider(lamports = 10_000_000n): SolDataProvider & {
+function trackingSolProvider(
+  lamports = 10_000_000n,
+  accountExists = true,
+): SolDataProvider & {
   calls: {
     getLamports: number;
     getTokenAccounts: number;
@@ -56,7 +39,9 @@ function trackingSolProvider(lamports = 10_000_000n): SolDataProvider & {
     getLatestBlockhash: number;
     getAccountExists: number;
   };
+  existsQueries: string[];
 } {
+  const existsQueries: string[] = [];
   const calls = {
     getLamports: 0,
     getTokenAccounts: 0,
@@ -67,6 +52,7 @@ function trackingSolProvider(lamports = 10_000_000n): SolDataProvider & {
   };
   return {
     calls,
+    existsQueries,
     async getLamports(): Promise<bigint> {
       calls.getLamports += 1;
       return lamports;
@@ -87,9 +73,10 @@ function trackingSolProvider(lamports = 10_000_000n): SolDataProvider & {
       calls.getLatestBlockhash += 1;
       return { blockhash: BLOCKHASH, lastValidBlockHeight: 123n };
     },
-    async getAccountExists(): Promise<boolean> {
+    async getAccountExists(account: string): Promise<boolean> {
       calls.getAccountExists += 1;
-      return true;
+      existsQueries.push(account);
+      return accountExists;
     },
   };
 }
@@ -106,6 +93,8 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
       rawAmount: 1_000_000n,
     });
     expect(provider.calls.getLamports).toBe(1);
+    expect(provider.calls.getAccountExists).toBe(1);
+    expect(provider.existsQueries).toEqual([TO]);
 
     expect(adapter.capabilities.preparesTransfers).toBe(true);
     expect(artifact.kind).toBe('solana-message');
@@ -150,7 +139,8 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
   });
 
   it('builds SPL token transfer construction in Phase 2.1', async () => {
-    const adapter = new SolanaAdapter(fake);
+    const provider = trackingSolProvider();
+    const adapter = new SolanaAdapter(provider);
 
     const artifact = await adapter.buildUnsignedTransfer({
       account,
@@ -168,6 +158,9 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
       decimals: 6,
       feeAsset: 'SOL',
     });
+    expect(provider.calls.getAccountExists).toBe(2);
+    expect(provider.calls.getLamports).toBe(1);
+    expect(provider.existsQueries).not.toContain(TO);
   });
 
   it('rejects native SOL transfers when lamports cannot cover amount + network fee', async () => {
@@ -185,6 +178,7 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
     ).rejects.toThrow(/Insufficient SOL balance for amount \+ network fee/);
     expect(provider.calls.getLatestBlockhash).toBe(1);
     expect(provider.calls.getLamports).toBe(1);
+    expect(provider.calls.getAccountExists).toBe(0);
   });
 
   it('rejects SPL transfers when lamports cannot cover the network fee', async () => {
@@ -202,6 +196,60 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
     ).rejects.toThrow(/Insufficient SOL balance for amount \+ network fee/);
     expect(provider.calls.getAccountExists).toBe(2);
     expect(provider.calls.getLamports).toBe(1);
+  });
+
+  it('rejects new native SOL recipients below the rent-exempt minimum', async () => {
+    const provider = trackingSolProvider(10_000_000n, false);
+    const adapter = new SolanaAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'solana',
+        to: TO,
+        asset: 'SOL',
+        rawAmount: 500_000n,
+      }),
+    ).rejects.toThrow(/Recipient SOL account does not exist yet.*890880 lamports/);
+    expect(provider.calls.getLamports).toBe(1);
+    expect(provider.calls.getAccountExists).toBe(1);
+    expect(provider.existsQueries).toEqual([TO]);
+  });
+
+  it('allows new native SOL recipients at the rent-exempt minimum', async () => {
+    const provider = trackingSolProvider(10_000_000n, false);
+    const adapter = new SolanaAdapter(provider);
+
+    const artifact = await adapter.buildUnsignedTransfer({
+      account,
+      chain: 'solana',
+      to: TO,
+      asset: 'SOL',
+      rawAmount: SOL_RENT_EXEMPT_MIN_LAMPORTS,
+    });
+
+    expect(artifact.kind).toBe('solana-message');
+    expect(artifact.summary.rawAmount).toBe(SOL_RENT_EXEMPT_MIN_LAMPORTS.toString());
+    expect(provider.calls.getAccountExists).toBe(1);
+    expect(provider.existsQueries).toEqual([TO]);
+  });
+
+  it('allows existing native SOL recipients below the rent-exempt minimum', async () => {
+    const provider = trackingSolProvider(10_000_000n, true);
+    const adapter = new SolanaAdapter(provider);
+
+    const artifact = await adapter.buildUnsignedTransfer({
+      account,
+      chain: 'solana',
+      to: TO,
+      asset: 'SOL',
+      rawAmount: 500_000n,
+    });
+
+    expect(artifact.kind).toBe('solana-message');
+    expect(artifact.summary.rawAmount).toBe('500000');
+    expect(provider.calls.getAccountExists).toBe(1);
+    expect(provider.existsQueries).toEqual([TO]);
   });
 
   it('rejects invalid recipients before reading provider data', async () => {

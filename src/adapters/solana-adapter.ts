@@ -5,6 +5,7 @@ import {
   appendTransactionMessageInstruction,
   compileTransaction,
   createTransactionMessage,
+  getMinimumBalanceForRentExemption,
   pipe,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
@@ -49,6 +50,7 @@ const RECEIVE_NOTE =
   'Solana addresses are reusable - verify on your signing device before use.';
 const SOLANA_PROGRAMS = [SOL_TOKEN_PROGRAM, SOL_TOKEN_2022_PROGRAM] as const;
 const SOL_TRANSFER_FEE_LAMPORTS = 5000n;
+const SOL_RENT_EXEMPT_MIN_LAMPORTS = getMinimumBalanceForRentExemption(0n);
 
 function pubkeysOf(account: AccountDescriptor): string[] {
   return account.source.kind === 'addresses' ? account.source.addresses : [];
@@ -449,6 +451,14 @@ export class SolanaAdapter implements ChainAdapter {
       throw new Error(
         `Insufficient SOL balance for amount + network fee: required ${requiredLamports} lamports, available ${lamports}.`,
       );
+    }
+    if (params.asset === native.symbol) {
+      const recipientExists = await this.provider.getAccountExists(address(params.to));
+      if (!recipientExists && params.rawAmount < SOL_RENT_EXEMPT_MIN_LAMPORTS) {
+        throw new Error(
+          `Recipient SOL account does not exist yet; amount must be at least the rent-exempt minimum (${SOL_RENT_EXEMPT_MIN_LAMPORTS} lamports).`,
+        );
+      }
     }
 
     const message = pipe(
