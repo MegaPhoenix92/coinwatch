@@ -27,6 +27,7 @@
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "release:verify": "node scripts/verify-release-artifact.mjs",
+    "registry:verify": "node scripts/verify-registry.mjs",
     "security:no-signing": "node scripts/check-no-signing.mjs src",
     "security:secrets": "node scripts/check-secrets.mjs",
     "test": "vitest run",

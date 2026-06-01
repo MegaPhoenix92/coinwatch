@@ -27,6 +27,7 @@ jobs:
         run: |
           npm run build
           npm run release:verify
+          npm run registry:verify
 
       - name: Test
         run: npm test
