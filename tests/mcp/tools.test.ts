@@ -231,6 +231,6 @@ describe('buildHandlers — category overrides', () => {
     }>;
     expect(cleared[0]?.category).toBe('unknown');
     expect(cleared[0]?.categorySource).toBe('heuristic');
-    store.close();
+    await store.close();
   });
 });

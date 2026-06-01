@@ -10,6 +10,10 @@ import {
 import { assertTxCategory } from '../domain/categories.js';
 import type { Tx } from '../domain/types.js';
 import { txCategoryRowKey, type TxCategoryOverrideRow } from '../core/tx-category.js';
+import type { CacheStore, HistoricalPriceCacheRow } from './cache-store.js';
+import { SQLITE_MIGRATIONS } from './schema.js';
+
+export type { HistoricalPriceCacheRow } from './cache-store.js';
 
 interface TxRow {
   json: string;
@@ -19,11 +23,6 @@ interface PriceHistoryRow {
   usd: number;
   source: HistoricalPriceSource;
   date: string;
-}
-
-export interface HistoricalPriceCacheRow extends HistoricalUsdPrice {
-  coingeckoId: string;
-  fetchedAt?: number;
 }
 
 interface SerializedTx {
@@ -39,52 +38,20 @@ interface SerializedTx {
   confirmed: boolean;
 }
 
-const MIGRATIONS = `
-CREATE TABLE IF NOT EXISTS address_labels (
-  chain TEXT,
-  address TEXT,
-  label TEXT,
-  PRIMARY KEY (chain, address)
-) STRICT;
-CREATE TABLE IF NOT EXISTS tx_cache (
-  chain TEXT,
-  txid TEXT,
-  json TEXT,
-  fetched_at INTEGER,
-  PRIMARY KEY (chain, txid)
-) STRICT;
-CREATE TABLE IF NOT EXISTS price_history (
-  coingecko_id TEXT,
-  date TEXT,
-  usd REAL,
-  source TEXT,
-  fetched_at INTEGER,
-  PRIMARY KEY (coingecko_id, date)
-) STRICT;
-CREATE TABLE IF NOT EXISTS tx_category_overrides (
-  chain TEXT,
-  txid TEXT,
-  symbol TEXT,
-  category TEXT,
-  note TEXT,
-  updated_at INTEGER,
-  PRIMARY KEY (chain, txid, symbol)
-) STRICT;
-`;
-
-export class Store {
+/** SQLite-backed cache (tests and optional local dev only). */
+export class Store implements CacheStore {
   private readonly db: Database.Database;
 
   constructor(db: Database.Database) {
     this.db = db;
-    this.db.exec(MIGRATIONS);
+    this.db.exec(SQLITE_MIGRATIONS);
   }
 
   static open(path: string): Store {
     return new Store(new Database(path));
   }
 
-  setLabel(chain: Chain, address: string, label: string): void {
+  async setLabel(chain: Chain, address: string, label: string): Promise<void> {
     this.db
       .prepare(
         'INSERT INTO address_labels (chain, address, label) VALUES (?, ?, ?) ' +
@@ -93,14 +60,14 @@ export class Store {
       .run(chain, address, label);
   }
 
-  getLabel(chain: Chain, address: string): string | undefined {
+  async getLabel(chain: Chain, address: string): Promise<string | undefined> {
     const row = this.db
       .prepare('SELECT label FROM address_labels WHERE chain = ? AND address = ?')
       .get(chain, address) as { label: string } | undefined;
     return row?.label;
   }
 
-  cacheTxs(txs: Tx[]): void {
+  async cacheTxs(txs: Tx[]): Promise<void> {
     const stmt = this.db.prepare(
       'INSERT INTO tx_cache (chain, txid, json, fetched_at) VALUES (?, ?, ?, ?) ' +
         'ON CONFLICT(chain, txid) DO UPDATE SET json = excluded.json, fetched_at = excluded.fetched_at',
@@ -127,7 +94,7 @@ export class Store {
     insertMany(txs);
   }
 
-  getCachedTxs(chain: Chain): Tx[] {
+  async getCachedTxs(chain: Chain): Promise<Tx[]> {
     const rows = this.db
       .prepare('SELECT json FROM tx_cache WHERE chain = ? ORDER BY fetched_at')
       .all(chain) as TxRow[];
@@ -149,7 +116,10 @@ export class Store {
     });
   }
 
-  getHistoricalPrice(coingeckoId: string, date: UtcDateString): HistoricalUsdPrice | undefined {
+  async getHistoricalPrice(
+    coingeckoId: string,
+    date: UtcDateString,
+  ): Promise<HistoricalUsdPrice | undefined> {
     const row = this.db
       .prepare('SELECT usd, source, date FROM price_history WHERE coingecko_id = ? AND date = ?')
       .get(coingeckoId, date) as PriceHistoryRow | undefined;
@@ -164,7 +134,7 @@ export class Store {
     };
   }
 
-  setTxCategoryOverride(row: TxCategoryOverrideRow): void {
+  async setTxCategoryOverride(row: TxCategoryOverrideRow): Promise<void> {
     const category = assertTxCategory(row.category);
     this.db
       .prepare(
@@ -175,13 +145,13 @@ export class Store {
       .run(row.chain, row.txid, row.symbol, category, row.note ?? null, Date.now());
   }
 
-  clearTxCategoryOverride(chain: Chain, txid: string, symbol: AssetSymbol): void {
+  async clearTxCategoryOverride(chain: Chain, txid: string, symbol: AssetSymbol): Promise<void> {
     this.db
       .prepare('DELETE FROM tx_category_overrides WHERE chain = ? AND txid = ? AND symbol = ?')
       .run(chain, txid, symbol);
   }
 
-  getTxCategoryOverrides(): Map<string, TxCategoryOverrideRow> {
+  async getTxCategoryOverrides(): Promise<Map<string, TxCategoryOverrideRow>> {
     const rows = this.db
       .prepare('SELECT chain, txid, symbol, category, note FROM tx_category_overrides')
       .all() as Array<{
@@ -206,7 +176,7 @@ export class Store {
     return out;
   }
 
-  cacheHistoricalPrice(row: HistoricalPriceCacheRow): void {
+  async cacheHistoricalPrice(row: HistoricalPriceCacheRow): Promise<void> {
     this.db
       .prepare(
         'INSERT INTO price_history (coingecko_id, date, usd, source, fetched_at) VALUES (?, ?, ?, ?, ?) ' +
@@ -215,7 +185,7 @@ export class Store {
       .run(row.coingeckoId, row.date, row.usd, row.source, row.fetchedAt ?? Date.now());
   }
 
-  close(): void {
+  async close(): Promise<void> {
     this.db.close();
   }
 }

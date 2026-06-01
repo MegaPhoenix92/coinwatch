@@ -166,8 +166,8 @@ function parseToolText<T>(text: string): T {
 describe('headless MCP e2e regression suite', () => {
   let store: Store | undefined;
 
-  afterEach(() => {
-    store?.close();
+  afterEach(async () => {
+    await store?.close();
     store = undefined;
   });
 
@@ -184,7 +184,7 @@ describe('headless MCP e2e regression suite', () => {
 
   it('exercises the core MCP handlers against the real fixture stack', async () => {
     const { handlers, store: fixtureStore } = buildFixtureStack();
-    fixtureStore.setLabel('bitcoin', BTC, 'labeled BTC vault');
+    await fixtureStore.setLabel('bitcoin', BTC, 'labeled BTC vault');
 
     const portfolio = parseToolText<PortfolioView>(
       (await handlers.get_portfolio()).content[0].text,

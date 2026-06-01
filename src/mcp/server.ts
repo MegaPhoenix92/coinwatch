@@ -1,13 +1,13 @@
 import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import type { PortfolioService } from '../services/portfolio-service.js';
 import type { AccountDescriptor } from '../domain/account.js';
-import type { Store } from '../db/store.js';
+import type { CacheStore } from '../db/cache-store.js';
 import { buildTools, type PnlExportDependencies } from './tools.js';
 
 export function buildServer(
   service: PortfolioService,
   accounts: AccountDescriptor[],
-  store?: Store,
+  store?: CacheStore,
   pnlExport?: PnlExportDependencies,
 ) {
   return createSdkMcpServer({

@@ -205,12 +205,12 @@ describe('PortfolioService', () => {
     const all = await svc.getHistory([btcAccount]);
     expect(all).toHaveLength(1);
     expect(all[0].txid).toBe('deadbeef');
-    expect(store.getCachedTxs('bitcoin')).toHaveLength(1);
+    expect(await store.getCachedTxs('bitcoin')).toHaveLength(1);
 
     const limited = await svc.getHistory([btcAccount], { limit: 0 });
     expect(limited).toHaveLength(0);
 
-    store.close();
+    await store.close();
   });
 
   it('globally orders, dedupes, and limits merged cross-chain history', async () => {

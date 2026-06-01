@@ -1,5 +1,5 @@
 import type { HistoricalPriceProvider } from '../adapters/chain-adapter.js';
-import type { Store } from '../db/store.js';
+import type { CacheStore } from '../db/cache-store.js';
 import {
   HistoricalPriceCapabilityError,
   type HistoricalUsdPrice,
@@ -94,21 +94,21 @@ export class CoinGeckoHistoricalPriceProvider implements HistoricalPriceProvider
 export class CachingHistoricalPriceProvider implements HistoricalPriceProvider {
   constructor(
     private readonly inner: HistoricalPriceProvider,
-    private readonly store: Store,
+    private readonly store: CacheStore,
   ) {}
 
   async getHistoricalUsdPrice(
     coingeckoId: string,
     date: UtcDateString,
   ): Promise<HistoricalUsdPrice | undefined> {
-    const cached = this.store.getHistoricalPrice(coingeckoId, date);
+    const cached = await this.store.getHistoricalPrice(coingeckoId, date);
     if (cached !== undefined) {
       return cached;
     }
 
     const price = await this.inner.getHistoricalUsdPrice(coingeckoId, date);
     if (price !== undefined) {
-      this.store.cacheHistoricalPrice({ coingeckoId, ...price });
+      await this.store.cacheHistoricalPrice({ coingeckoId, ...price });
     }
     return price;
   }

@@ -6,7 +6,7 @@ import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
 import type { ChainFamily } from '../domain/chains.js';
 import type { TransferRequest, UnsignedArtifact } from '../domain/transfer.js';
 import type { Balance, HistoryOptions, PortfolioView, Tx } from '../domain/types.js';
-import type { Store } from '../db/store.js';
+import type { CacheStore } from '../db/cache-store.js';
 
 interface BalanceWithPending extends Balance {
   pendingRaw?: bigint;
@@ -32,7 +32,7 @@ export class PortfolioService {
   constructor(
     private readonly adapters: Map<ChainFamily, ChainAdapter>,
     private readonly prices: PriceProvider,
-    private readonly store?: Store,
+    private readonly store?: CacheStore,
   ) {}
 
   async getPortfolio(accounts: AccountDescriptor[]): Promise<PortfolioView> {
@@ -139,7 +139,7 @@ export class PortfolioService {
         const addresses = await adapter.resolveAddresses(account);
         const txs = await adapter.getHistory(addresses, opts);
         if (this.store !== undefined) {
-          this.store.cacheTxs(txs);
+          await this.store.cacheTxs(txs);
         }
         out.push(...txs);
       } catch {
