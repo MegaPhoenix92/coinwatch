@@ -120,6 +120,9 @@ const fakeSolProvider: SolDataProvider = {
   async getAccountExists(): Promise<boolean> {
     return true;
   },
+  async getMinimumBalanceForRentExemption(_space: bigint): Promise<bigint> {
+    return 890_880n;
+  },
 };
 
 const fakePrices: PriceProvider = {

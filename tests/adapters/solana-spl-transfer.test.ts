@@ -68,6 +68,10 @@ class FakeSolProvider implements SolDataProvider {
     this.existsQueries.push(accountAddress);
     return this.existingAccounts.has(accountAddress);
   }
+
+  async getMinimumBalanceForRentExemption(_space: bigint): Promise<bigint> {
+    return 890_880n;
+  }
 }
 
 async function splAtas() {

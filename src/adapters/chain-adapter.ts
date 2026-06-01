@@ -134,6 +134,8 @@ export interface SolDataProvider {
   getTransaction(signature: string): Promise<SolRawTx | undefined>;
   getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: bigint }>;
   getAccountExists(address: string): Promise<boolean>;
+  /** System-account space `0n` for native SOL recipients; sourced from RPC (SIMD-0437-safe). */
+  getMinimumBalanceForRentExemption(space: bigint): Promise<bigint>;
 }
 
 export interface PriceProvider {

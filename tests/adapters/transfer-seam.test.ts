@@ -118,6 +118,9 @@ const fakeSolProvider: SolDataProvider = {
   async getAccountExists() {
     return true;
   },
+  async getMinimumBalanceForRentExemption(_space: bigint) {
+    return 890_880n;
+  },
 };
 
 describe('transfer construction seam', () => {
