@@ -174,7 +174,7 @@ function applyBasisOverrides(
     match.declaredUnitBasisUsd =
       adjustment.unitBasisUsd ??
       manualUnitBasis(match.rawAmount, match.decimals, adjustment.totalBasisUsd ?? 0);
-    match.source = 'chain';
+    match.source = 'override';
   }
   return warnings;
 }

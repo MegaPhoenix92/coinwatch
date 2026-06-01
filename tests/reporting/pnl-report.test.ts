@@ -157,12 +157,12 @@ describe('computeAccountScopedPnl', () => {
     });
     expect(report.realizedRows[0].consumedLots.map((lot) => lot.source)).toEqual([
       'manual',
-      'chain',
+      'override',
     ]);
     expect(report.openLots[0]).toMatchObject({
       acquisitionTxid: 'visible-buy',
       rawAmount: 50_000_000n,
-      source: 'chain',
+      source: 'override',
       unitBasisUsd: 20_000,
     });
   });
