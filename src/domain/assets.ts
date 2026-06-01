@@ -1,6 +1,19 @@
 import type { Chain } from './chains.js';
 
-export type AssetSymbol = 'BTC' | 'ETH' | 'POL' | 'SOL' | 'USDC' | 'USDT' | 'PYUSD';
+/** All supported asset symbols (native + canonical + explicit bridged variants). */
+export const ASSET_SYMBOL_VALUES = [
+  'BTC',
+  'ETH',
+  'POL',
+  'SOL',
+  'USDC',
+  'USDT',
+  'PYUSD',
+  'USDC.e',
+  'USDT0',
+] as const;
+
+export type AssetSymbol = (typeof ASSET_SYMBOL_VALUES)[number];
 
 export interface AssetDef {
   chain: Chain;
@@ -26,13 +39,45 @@ export const ASSETS: AssetDef[] = [
   { chain: 'polygon', symbol: 'POL', kind: 'native', decimals: 18, coingeckoId: 'matic-network' },
   { chain: 'polygon', symbol: 'USDC', kind: 'token', address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', decimals: 6, coingeckoId: 'usd-coin' },
   { chain: 'polygon', symbol: 'USDT', kind: 'token', address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', decimals: 6, coingeckoId: 'tether' },
+  {
+    chain: 'polygon',
+    symbol: 'USDC.e',
+    kind: 'token',
+    address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+    decimals: 6,
+    coingeckoId: 'usd-coin',
+  },
   { chain: 'arbitrum', symbol: 'ETH', kind: 'native', decimals: 18, coingeckoId: 'ethereum' },
   { chain: 'arbitrum', symbol: 'USDC', kind: 'token', address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', decimals: 6, coingeckoId: 'usd-coin' },
   { chain: 'arbitrum', symbol: 'USDT', kind: 'token', address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', decimals: 6, coingeckoId: 'tether' },
+  {
+    chain: 'arbitrum',
+    symbol: 'USDC.e',
+    kind: 'token',
+    address: '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8',
+    decimals: 6,
+    coingeckoId: 'usd-coin',
+  },
   { chain: 'arbitrum', symbol: 'PYUSD', kind: 'token', address: '0x46850Ad61c2B7d64d08C9c754f45254596696984', decimals: 6, coingeckoId: 'paypal-usd' },
   { chain: 'optimism', symbol: 'ETH', kind: 'native', decimals: 18, coingeckoId: 'ethereum' },
   { chain: 'optimism', symbol: 'USDC', kind: 'token', address: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', decimals: 6, coingeckoId: 'usd-coin' },
   { chain: 'optimism', symbol: 'USDT', kind: 'token', address: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', decimals: 6, coingeckoId: 'tether' },
+  {
+    chain: 'optimism',
+    symbol: 'USDC.e',
+    kind: 'token',
+    address: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607',
+    decimals: 6,
+    coingeckoId: 'usd-coin',
+  },
+  {
+    chain: 'optimism',
+    symbol: 'USDT0',
+    kind: 'token',
+    address: '0x01bFF41798a0BcF287b996046Ca68b395DbC1071',
+    decimals: 6,
+    coingeckoId: 'tether',
+  },
   { chain: 'solana', symbol: 'SOL', kind: 'native', decimals: 9, coingeckoId: 'solana' },
   { chain: 'solana', symbol: 'USDC', kind: 'token', address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6, coingeckoId: 'usd-coin', tokenProgram: 'spl-token' },
   { chain: 'solana', symbol: 'USDT', kind: 'token', address: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6, coingeckoId: 'tether', tokenProgram: 'spl-token' },

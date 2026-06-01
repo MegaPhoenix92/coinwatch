@@ -17,6 +17,14 @@
   },
   {
     "chain": "arbitrum",
+    "symbol": "USDC.e",
+    "kind": "token",
+    "address": "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8",
+    "decimals": 6,
+    "coingeckoId": "usd-coin"
+  },
+  {
+    "chain": "arbitrum",
     "symbol": "USDC",
     "kind": "token",
     "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -97,11 +105,27 @@
   },
   {
     "chain": "optimism",
+    "symbol": "USDC.e",
+    "kind": "token",
+    "address": "0x7F5c764cBc14f9669B88837ca1490cCa17c31607",
+    "decimals": 6,
+    "coingeckoId": "usd-coin"
+  },
+  {
+    "chain": "optimism",
     "symbol": "USDC",
     "kind": "token",
     "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
     "decimals": 6,
     "coingeckoId": "usd-coin"
+  },
+  {
+    "chain": "optimism",
+    "symbol": "USDT0",
+    "kind": "token",
+    "address": "0x01bFF41798a0BcF287b996046Ca68b395DbC1071",
+    "decimals": 6,
+    "coingeckoId": "tether"
   },
   {
     "chain": "optimism",
@@ -118,6 +142,14 @@
     "address": null,
     "decimals": 18,
     "coingeckoId": "matic-network"
+  },
+  {
+    "chain": "polygon",
+    "symbol": "USDC.e",
+    "kind": "token",
+    "address": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+    "decimals": 6,
+    "coingeckoId": "usd-coin"
   },
   {
     "chain": "polygon",

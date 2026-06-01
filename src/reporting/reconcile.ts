@@ -3,7 +3,7 @@ import { extname, join } from 'node:path';
 import { z } from 'zod';
 import { assertUtcDateString, type UtcDateString } from '../domain/historical-price.js';
 import type { Chain } from '../domain/chains.js';
-import type { AssetSymbol } from '../domain/assets.js';
+import { ASSET_SYMBOL_VALUES, type AssetSymbol } from '../domain/assets.js';
 import type { PnlReport, RealizedRow } from './pnl.js';
 
 export interface ReconRecord {
@@ -106,7 +106,7 @@ const recordSchema = z.object({
   kind: z.literal('realized_disposal'),
   accountId: z.string().min(1),
   chain: z.enum(CHAIN_VALUES),
-  symbol: z.enum(['BTC', 'ETH', 'POL', 'SOL', 'USDC', 'USDT', 'PYUSD']),
+  symbol: z.enum(ASSET_SYMBOL_VALUES),
   date: z.string().transform((value, ctx) => {
     try {
       return assertUtcDateString(value);

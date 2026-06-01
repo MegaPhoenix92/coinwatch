@@ -45,6 +45,21 @@ describe('verified asset registry', () => {
     expect(baseTokens[0].symbol).toBe('USDC');
   });
 
+  it('registers bridged USDC.e separately from native USDC on arbitrum', () => {
+    const native = assetBySymbol('arbitrum', 'USDC');
+    const bridged = assetBySymbol('arbitrum', 'USDC.e');
+    expect(native?.address).toBe('0xaf88d065e77c8cC2239327C5EDb3A432268e5831');
+    expect(bridged?.address).toBe('0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8');
+    expect(native?.address).not.toBe(bridged?.address);
+  });
+
+  it('registers optimism USDT0 distinct from USDT', () => {
+    const usdt = assetBySymbol('optimism', 'USDT');
+    const usdt0 = assetBySymbol('optimism', 'USDT0');
+    expect(usdt?.address).toBe('0x94b008aA00579c1307B0EF2c499aD98a8ce58e58');
+    expect(usdt0?.address).toBe('0x01bFF41798a0BcF287b996046Ca68b395DbC1071');
+  });
+
   it('resolves an asset by chain + symbol', () => {
     const usdt = assetBySymbol('arbitrum', 'USDT');
     expect(usdt).toBeDefined();

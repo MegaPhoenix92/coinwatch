@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
 import type { AccountDescriptor } from '../domain/account.js';
-import { assetBySymbol, type AssetSymbol } from '../domain/assets.js';
+import { ASSET_SYMBOL_VALUES, assetBySymbol, type AssetSymbol } from '../domain/assets.js';
 import type { Chain } from '../domain/chains.js';
 import { assertUtcDateString, type UtcDateString } from '../domain/historical-price.js';
 
@@ -18,7 +18,7 @@ const CHAIN_VALUES = [
 const EVM_CHAIN_SET = new Set<Chain>(['ethereum', 'base', 'polygon', 'arbitrum', 'optimism']);
 
 const chainSchema = z.enum(CHAIN_VALUES);
-const assetSymbolSchema = z.enum(['BTC', 'ETH', 'POL', 'SOL', 'USDC', 'USDT', 'PYUSD']);
+const assetSymbolSchema = z.enum(ASSET_SYMBOL_VALUES);
 const btcScriptTypeSchema = z.enum(['p2wpkh', 'p2sh-p2wpkh', 'p2pkh']);
 const decimalBigintSchema = z
   .string()
