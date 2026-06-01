@@ -134,6 +134,69 @@ describe('computePnl', () => {
     });
   });
 
+  it('consumes older moved lots before newer destination lots after a self-transfer', async () => {
+    const report = await computePnl(
+      [
+        event({ accountId: 'A', direction: 'in', rawAmount: 50_000_000n, date: JAN_1, txid: 'a-old' }),
+        event({ accountId: 'B', direction: 'in', rawAmount: 25_000_000n, date: FEB_1, txid: 'b-newer' }),
+        event({ accountId: 'A', direction: 'self', rawAmount: 50_000_000n, date: MAR_1, txid: 'move-old' }),
+        event({ accountId: 'B', direction: 'self', rawAmount: 50_000_000n, date: MAR_1, txid: 'move-old' }),
+        event({ accountId: 'B', direction: 'out', rawAmount: 50_000_000n, date: APR_1, txid: 'b-sell' }),
+      ],
+      {
+        priceProvider: priceProvider([
+          ['bitcoin', JAN_1, 10_000],
+          ['bitcoin', FEB_1, 20_000],
+          ['bitcoin', APR_1, 30_000],
+        ]),
+        currentUsdPrice: () => 40_000,
+      },
+    );
+
+    expect(report.warnings).toEqual([]);
+    expect(report.realizedRows).toHaveLength(1);
+    expect(report.realizedRows[0]).toMatchObject({
+      accountId: 'B',
+      proceedsUsd: 15_000,
+      basisUsd: 5_000,
+      gainUsd: 10_000,
+      disposalTxid: 'b-sell',
+    });
+    expect(report.realizedRows[0].consumedLots).toEqual([
+      {
+        lotId: 'A:a-old:0->B:move-old',
+        acquiredDate: JAN_1,
+        acquisitionTxid: 'a-old',
+        rawAmount: 50_000_000n,
+        basisUsd: 5_000,
+      },
+    ]);
+  });
+
+  it('refuses self-transfer moves when either ledger had an excluded acquisition', async () => {
+    const report = await computePnl(
+      [
+        event({ accountId: 'A', direction: 'in', rawAmount: 50_000_000n, date: undefined, txid: 'a-undated' }),
+        event({ accountId: 'B', direction: 'in', rawAmount: 50_000_000n, date: JAN_1, txid: 'b-balance' }),
+        event({ accountId: 'A', direction: 'self', rawAmount: 50_000_000n, date: MAR_1, txid: 'bad-move' }),
+        event({ accountId: 'B', direction: 'self', rawAmount: 50_000_000n, date: MAR_1, txid: 'bad-move' }),
+      ],
+      {
+        priceProvider: priceProvider([['bitcoin', JAN_1, 20_000]]),
+        currentUsdPrice: () => 40_000,
+      },
+    );
+
+    expect(report.warnings.join('\n')).toMatch(/undated:a-undated/);
+    expect(report.warnings.join('\n')).toMatch(/unpaired_self_transfer:bad-move/);
+    expect(report.openLots).toHaveLength(1);
+    expect(report.openLots[0]).toMatchObject({
+      accountId: 'B',
+      acquisitionTxid: 'b-balance',
+      rawAmount: 50_000_000n,
+    });
+  });
+
   it('excludes undated, unknown, unpriceable, and unpaired self events with warnings', async () => {
     const provider = priceProvider([], [['bitcoin', FEB_1]]);
 

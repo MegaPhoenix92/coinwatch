@@ -89,9 +89,13 @@ export class FifoStrategy implements LotSelectionStrategy {
   readonly method = 'FIFO';
 
   selectLots(lots: readonly OpenLot[], rawAmount: bigint): OpenLot[] {
+    const ordered = [...lots].sort((a, b) => {
+      const byDate = a.acquiredDate.localeCompare(b.acquiredDate);
+      return byDate === 0 ? a.lotId.localeCompare(b.lotId) : byDate;
+    });
     const selected: OpenLot[] = [];
     let remaining = rawAmount;
-    for (const lot of lots) {
+    for (const lot of ordered) {
       if (remaining <= 0n) {
         break;
       }
@@ -287,6 +291,8 @@ function groupSelfTransfers(events: IndexedEvent[]): Map<string, IndexedEvent[]>
 }
 
 function selfTransferKey(event: PnlEvent): string {
+  // Self-transfer pairing currently assumes equal raw amounts on both account
+  // legs. Fee-reduced legs fall through to unpaired_self_transfer (#111).
   return `${event.txid}:${event.chain}:${event.symbol}:${event.rawAmount}`;
 }
 
@@ -294,10 +300,16 @@ function moveSelfTransfer(
   group: readonly IndexedEvent[],
   ledgers: Map<string, LedgerBucket>,
   strategy: LotSelectionStrategy,
+  excludedLedgerKeys: Set<string>,
   warnings: string[],
 ): void {
   if (group.length !== 2) {
     warnings.push(`unpaired_self_transfer:${group[0]?.txid ?? 'unknown'}: expected exactly two account events`);
+    return;
+  }
+
+  if (group.some((event) => excludedLedgerKeys.has(ledgerKey(event)))) {
+    warnings.push(`unpaired_self_transfer:${group[0].txid}: source or destination ledger has excluded events`);
     return;
   }
 
@@ -341,6 +353,7 @@ export async function computePnl(
   const warnings: string[] = [];
   const realizedRows: RealizedRow[] = [];
   const ledgers = new Map<string, LedgerBucket>();
+  const excludedLedgerKeys = new Set<string>();
   const indexed = events.map((event, index) => ({ ...event, index }));
   const ordered = [...indexed].sort((a, b) => {
     if (a.date === undefined && b.date === undefined) {
@@ -359,10 +372,14 @@ export async function computePnl(
 
   for (const event of ordered) {
     if (event.direction === 'unknown') {
+      excludedLedgerKeys.add(ledgerKey(event));
       warnings.push(`unknown:${event.txid}: excluded unknown direction`);
       continue;
     }
     if (event.date === undefined) {
+      if (event.direction === 'in' || event.direction === 'out') {
+        excludedLedgerKeys.add(ledgerKey(event));
+      }
       warnings.push(`undated:${event.txid}: ${event.chain}/${event.symbol} has no confirmed UTC date`);
       continue;
     }
@@ -375,7 +392,7 @@ export async function computePnl(
       if (group === undefined || group.length !== 2) {
         warnings.push(`unpaired_self_transfer:${event.txid}: no matching account event`);
       } else {
-        moveSelfTransfer(group, ledgers, strategy, warnings);
+        moveSelfTransfer(group, ledgers, strategy, excludedLedgerKeys, warnings);
       }
       processedSelfTransfers.add(key);
       continue;
@@ -383,6 +400,7 @@ export async function computePnl(
 
     const price = await historicalUsd(event, opts.priceProvider, warnings);
     if (price === undefined) {
+      excludedLedgerKeys.add(ledgerKey(event));
       continue;
     }
 
