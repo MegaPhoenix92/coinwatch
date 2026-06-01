@@ -3,6 +3,9 @@ import { address as solanaAddress } from '@solana/kit';
 import { isAddress } from 'viem';
 import type { Chain } from '../domain/chains.js';
 
+// Used only inside the catch block below: it selects which error message fires,
+// not whether the address is accepted. `Address(NETWORK).decode(to)` is the real
+// accept/reject gate (mainnet decode throws on testnet/regtest/malformed input).
 function isBitcoinTestAddress(to: string): boolean {
   return /^(tb1|bcrt1|[mn2])/i.test(to);
 }
