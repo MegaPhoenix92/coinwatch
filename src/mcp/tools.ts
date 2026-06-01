@@ -8,6 +8,7 @@ import { assertUtcDateString } from '../domain/historical-price.js';
 import type { Tx } from '../domain/types.js';
 import type { Store } from '../db/store.js';
 import type { HistoricalPriceProvider } from '../adapters/chain-adapter.js';
+import type { OpeningBalancesConfig } from '../config/load.js';
 import { pnlReportToCsvBundle, writePnlCsvBundle } from '../reporting/csv-export.js';
 import { computeAccountScopedPnl } from '../reporting/pnl-report.js';
 import { writeArtifactFile } from './artifact-file.js';
@@ -21,6 +22,7 @@ const asText = (text: string): ToolResult => ({
 export interface PnlExportDependencies {
   priceProvider: HistoricalPriceProvider;
   currentUsdPrice(coingeckoId: string): number | undefined;
+  openingBalances?: OpeningBalancesConfig;
   outputDir?: string;
 }
 
@@ -104,6 +106,7 @@ export function buildHandlers(
       const report = await computeAccountScopedPnl(service, selected, {
         priceProvider: pnlExport.priceProvider,
         currentUsdPrice: pnlExport.currentUsdPrice,
+        openingBalances: pnlExport.openingBalances,
         from: args.from === undefined ? undefined : assertUtcDateString(args.from),
         to: args.to === undefined ? undefined : assertUtcDateString(args.to),
         limit: args.limit,

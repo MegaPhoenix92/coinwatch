@@ -97,6 +97,7 @@ describe('computePnl', () => {
         acquisitionTxid: 'buy-1',
         rawAmount: 100_000_000n,
         basisUsd: 10_000,
+        source: 'chain',
       },
       {
         lotId: 'A:buy-2:1',
@@ -104,6 +105,7 @@ describe('computePnl', () => {
         acquisitionTxid: 'buy-2',
         rawAmount: 50_000_000n,
         basisUsd: 10_000,
+        source: 'chain',
       },
     ]);
 
@@ -169,6 +171,7 @@ describe('computePnl', () => {
         acquisitionTxid: 'a-old',
         rawAmount: 50_000_000n,
         basisUsd: 5_000,
+        source: 'chain',
       },
     ]);
   });
@@ -242,6 +245,44 @@ describe('computePnl', () => {
     expect(report.openLots).toHaveLength(1);
     expect(report.openLots[0].accountId).toBe('B');
     expect(report.warnings.join('\n')).toMatch(/insufficient_lots:a-sell/);
+  });
+
+  it('uses declared inbound basis without calling the historical price provider and marks lots manual', async () => {
+    const provider = priceProvider([['bitcoin', MAR_1, 30_000]]);
+
+    const report = await computePnl(
+      [
+        event({
+          accountId: 'A',
+          direction: 'in',
+          rawAmount: BTC,
+          date: JAN_1,
+          txid: 'manual-basis',
+          declaredUnitBasisUsd: 10_000,
+        }),
+        event({ accountId: 'A', direction: 'out', rawAmount: 50_000_000n, date: MAR_1, txid: 'sell' }),
+      ],
+      {
+        priceProvider: provider,
+        currentUsdPrice: () => 40_000,
+      },
+    );
+
+    expect(provider.calls).toBe(1);
+    expect(report.realizedRows[0]).toMatchObject({
+      proceedsUsd: 15_000,
+      basisUsd: 5_000,
+      gainUsd: 10_000,
+    });
+    expect(report.realizedRows[0].consumedLots[0]).toMatchObject({
+      acquisitionTxid: 'manual-basis',
+      source: 'manual',
+    });
+    expect(report.openLots[0]).toMatchObject({
+      acquisitionTxid: 'manual-basis',
+      source: 'manual',
+      unitBasisUsd: 10_000,
+    });
   });
 });
 

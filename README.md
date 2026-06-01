@@ -66,6 +66,36 @@ with informational FIFO PnL CSV export; coinwatch still never signs or broadcast
    Bitcoin `source.kind: "xpub"` supports `scriptType` values `p2wpkh`, `p2sh-p2wpkh`, and
    `p2pkh`. Literal watch-address sources use `{ "kind": "addresses", "addresses": [...] }`.
 
+   Optional reporting reconciliation data can live in `config/opening-balances.local.json`
+   (also gitignored). Use it only to declare pre-history opening lots or basis overrides:
+
+   ```json
+   {
+     "openingLots": [
+       {
+         "id": "btc-prehistory-1",
+         "accountId": "btc-cold-1",
+         "chain": "bitcoin",
+         "symbol": "BTC",
+         "rawAmount": "100000000",
+         "decimals": 8,
+         "acquiredDate": "2026-01-01",
+         "totalBasisUsd": 10000
+       }
+     ],
+     "adjustments": [
+       {
+         "type": "basis_override",
+         "accountId": "btc-cold-1",
+         "chain": "bitcoin",
+         "symbol": "BTC",
+         "txid": "visible-acquisition-txid",
+         "totalBasisUsd": 20000
+       }
+     ]
+   }
+   ```
+
 3. Create `.env`. This file is also gitignored:
 
    ```bash

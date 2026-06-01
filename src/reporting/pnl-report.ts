@@ -1,4 +1,6 @@
 import type { HistoricalPriceProvider } from '../adapters/chain-adapter.js';
+import type { OpeningBalancesConfig, OpeningLot, BasisOverrideAdjustment } from '../config/load.js';
+import { formatUnits } from '../core/money.js';
 import type { AccountDescriptor } from '../domain/account.js';
 import type { UtcDateString } from '../domain/historical-price.js';
 import type { HistoryOptions } from '../domain/types.js';
@@ -20,6 +22,7 @@ export interface AccountScopedPnlOptions {
   from?: UtcDateString;
   to?: UtcDateString;
   limit?: number;
+  openingBalances?: OpeningBalancesConfig;
 }
 
 function emptyTotals(): PnlTotals {
@@ -123,21 +126,107 @@ function duplicateAddressWarnings(accounts: readonly AccountDescriptor[]): strin
   return warnings;
 }
 
+function manualUnitBasis(rawAmount: bigint, decimals: number, totalBasisUsd: number): number {
+  return totalBasisUsd / Number(formatUnits(rawAmount, decimals));
+}
+
+function eventKey(event: Pick<PnlEvent, 'accountId' | 'chain' | 'symbol'>): string {
+  return `${event.accountId}:${event.chain}:${event.symbol}`;
+}
+
+function openingLotKey(lot: Pick<OpeningLot, 'accountId' | 'chain' | 'symbol'>): string {
+  return `${lot.accountId}:${lot.chain}:${lot.symbol}`;
+}
+
+function openingLotToEvent(lot: OpeningLot): PnlEvent {
+  return {
+    accountId: lot.accountId,
+    chain: lot.chain,
+    symbol: lot.symbol,
+    direction: 'in',
+    rawAmount: lot.rawAmount,
+    decimals: lot.decimals,
+    date: lot.acquiredDate,
+    txid: `manual:${lot.id}`,
+    declaredUnitBasisUsd: manualUnitBasis(lot.rawAmount, lot.decimals, lot.totalBasisUsd),
+    source: 'manual',
+  };
+}
+
+function applyBasisOverrides(
+  events: PnlEvent[],
+  adjustments: readonly BasisOverrideAdjustment[],
+): string[] {
+  const warnings: string[] = [];
+  for (const adjustment of adjustments) {
+    const match = events.find(
+      (event) =>
+        event.direction === 'in' &&
+        event.accountId === adjustment.accountId &&
+        event.chain === adjustment.chain &&
+        event.symbol === adjustment.symbol &&
+        event.txid === adjustment.txid,
+    );
+    if (match === undefined) {
+      warnings.push(`basis_override_no_match:${adjustment.txid}: no visible inbound event matched`);
+      continue;
+    }
+    match.declaredUnitBasisUsd =
+      adjustment.unitBasisUsd ??
+      manualUnitBasis(match.rawAmount, match.decimals, adjustment.totalBasisUsd ?? 0);
+    match.source = 'chain';
+  }
+  return warnings;
+}
+
+function openingOverlapWarnings(
+  openingLots: readonly OpeningLot[],
+  visibleEvents: readonly PnlEvent[],
+): string[] {
+  const earliestVisibleIn = new Map<string, UtcDateString>();
+  for (const event of visibleEvents) {
+    if (event.direction !== 'in' || event.date === undefined) {
+      continue;
+    }
+    const key = eventKey(event);
+    const prior = earliestVisibleIn.get(key);
+    if (prior === undefined || event.date < prior) {
+      earliestVisibleIn.set(key, event.date);
+    }
+  }
+
+  const warnings: string[] = [];
+  for (const lot of openingLots) {
+    const earliest = earliestVisibleIn.get(openingLotKey(lot));
+    if (earliest !== undefined && lot.acquiredDate >= earliest) {
+      warnings.push(
+        `opening_balance_overlap:${lot.id}: opening lot date ${lot.acquiredDate} is on/after visible inbound ${earliest}`,
+      );
+    }
+  }
+  return warnings;
+}
+
 export async function computeAccountScopedPnl(
   service: PortfolioService,
   accounts: readonly AccountDescriptor[],
   opts: AccountScopedPnlOptions,
 ): Promise<PnlReport> {
   const warnings = duplicateAddressWarnings(accounts);
-  const events: PnlEvent[] = [];
+  const visibleEvents: PnlEvent[] = [];
   const historyOpts: HistoryOptions = opts.limit === undefined ? {} : { limit: opts.limit };
 
   for (const account of accounts) {
     // Provider-side pageKey pagination is out of scope; each provider fetches up
     // to limit and this layer preserves the cross-account merge contract.
     const txs = await service.getHistory([account], historyOpts);
-    events.push(...txToPnlEvents(txs, account.id));
+    visibleEvents.push(...txToPnlEvents(txs, account.id));
   }
+
+  const openingBalances = opts.openingBalances ?? { openingLots: [], adjustments: [] };
+  warnings.push(...applyBasisOverrides(visibleEvents, openingBalances.adjustments));
+  warnings.push(...openingOverlapWarnings(openingBalances.openingLots, visibleEvents));
+  const events = [...openingBalances.openingLots.map(openingLotToEvent), ...visibleEvents];
 
   if (opts.limit !== undefined) {
     warnings.push(`history_limited:all: limit ${opts.limit} may omit older acquisitions and skew basis`);

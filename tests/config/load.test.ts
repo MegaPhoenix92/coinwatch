@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadAccounts, loadEnv } from '../../src/config/load.js';
+import { loadAccounts, loadEnv, loadOpeningBalances } from '../../src/config/load.js';
 import type { AccountDescriptor } from '../../src/domain/account.js';
 
 let dir: string;
@@ -20,6 +20,16 @@ function writeAccounts(name: string, value: unknown): string {
   writeFileSync(file, JSON.stringify(value), 'utf8');
   return file;
 }
+
+const knownAccounts: AccountDescriptor[] = [
+  {
+    id: 'acct-1',
+    label: 'BTC',
+    family: 'bitcoin',
+    chains: ['bitcoin'],
+    source: { kind: 'addresses', addresses: ['bc1qexample0000000000000000000000000000000'] },
+  },
+];
 
 function writeRaw(name: string, value: string): string {
   const file = join(dir, name);
@@ -235,6 +245,97 @@ describe('loadAccounts', () => {
       return;
     }
     throw new Error('expected loadAccounts to throw');
+  });
+});
+
+describe('loadOpeningBalances', () => {
+  it('returns an empty model when the optional file is absent', () => {
+    expect(loadOpeningBalances(join(dir, 'opening-balances.local.json'), knownAccounts)).toEqual({
+      openingLots: [],
+      adjustments: [],
+    });
+  });
+
+  it('parses opening lots and basis overrides with bigint amounts and UTC dates', () => {
+    const file = writeAccounts('opening.json', {
+      openingLots: [
+        {
+          id: 'lot-1',
+          accountId: 'acct-1',
+          chain: 'bitcoin',
+          symbol: 'BTC',
+          rawAmount: '100000000',
+          decimals: 8,
+          acquiredDate: '2026-01-01',
+          totalBasisUsd: 10_000,
+          note: 'initial import',
+        },
+      ],
+      adjustments: [
+        {
+          type: 'basis_override',
+          accountId: 'acct-1',
+          chain: 'bitcoin',
+          symbol: 'BTC',
+          txid: 'buy-1',
+          unitBasisUsd: 20_000,
+        },
+      ],
+    });
+
+    const parsed = loadOpeningBalances(file, knownAccounts);
+
+    expect(parsed.openingLots[0]).toMatchObject({
+      id: 'lot-1',
+      rawAmount: 100_000_000n,
+      acquiredDate: '2026-01-01',
+      totalBasisUsd: 10_000,
+    });
+    expect(parsed.adjustments[0]).toMatchObject({
+      type: 'basis_override',
+      txid: 'buy-1',
+      unitBasisUsd: 20_000,
+    });
+  });
+
+  it('rejects opening lots without an acquiredDate', () => {
+    const file = writeAccounts('missing-date.json', {
+      openingLots: [
+        {
+          id: 'lot-1',
+          accountId: 'acct-1',
+          chain: 'bitcoin',
+          symbol: 'BTC',
+          rawAmount: '100000000',
+          decimals: 8,
+          totalBasisUsd: 10_000,
+        },
+      ],
+      adjustments: [],
+    });
+
+    expect(() => loadOpeningBalances(file, knownAccounts)).toThrow(/acquiredDate/);
+  });
+
+  it('rejects unknown account ids and non-positive opening amounts', () => {
+    const file = writeAccounts('unknown-account.json', {
+      openingLots: [
+        {
+          id: 'lot-1',
+          accountId: 'missing',
+          chain: 'bitcoin',
+          symbol: 'BTC',
+          rawAmount: '0',
+          decimals: 8,
+          acquiredDate: '2026-01-01',
+          totalBasisUsd: 10_000,
+        },
+      ],
+      adjustments: [],
+    });
+
+    expect(() => loadOpeningBalances(file, knownAccounts)).toThrow(/unknown account id/);
+    expect(() => loadOpeningBalances(file, knownAccounts)).toThrow(/must be positive/);
   });
 });
 
