@@ -200,8 +200,11 @@ Claude Agent SDK + MCP tools.
   Alchemy for EVM, Helius / public Solana RPC, and CoinGecko for price IDs. coinwatch does not
   prevent provider-side address clustering; use private or self-hosted endpoints when that matters.
 - Optional env overrides (see `.env.example`): `MEMPOOL_API_BASE`, `SOLANA_RPC_URL`, and per-chain
-  `EVM_RPC_*` URLs take precedence over vendor API keys. Tor/proxy and per-account provider isolation
-  are out of scope for v1 — run separate processes with different configs if you need isolation.
+  `EVM_RPC_*` URLs take precedence over vendor API keys for the chains you set. If `ALCHEMY_API_KEY`
+  is set, any EVM chain without an `EVM_RPC_*` override still uses Alchemy — unset the key or set all
+  five `EVM_RPC_*` values when routing every EVM chain to private RPC. CoinGecko has no URL override in
+  v1. Tor/proxy and per-account provider isolation are out of scope — run separate processes with
+  different configs if you need isolation.
 - `coinwatch.db` is local. It caches labels and public transaction records only; it never stores
   signing keys.
 - Every receive address returned by the CLI is still unverified until you confirm it on your
