@@ -16,10 +16,12 @@ You supply only **public** xpubs / account descriptors / watch addresses.
 
 ## Status
 
-Phase 1 is implemented as a watch-only CLI agent. It reads configured public account
+Phases 1–3 are implemented as a watch-only CLI agent. It reads configured public account
 descriptors, queries provider APIs through adapter seams, exposes seven watch-only MCP tools, and
-stores optional local labels / transaction cache entries in `coinwatch.db`. Phase 3 has started
-with informational FIFO PnL CSV export; coinwatch still never signs or broadcasts.
+stores optional local labels / transaction cache entries in `coinwatch.db`. **Phase 2** builds
+unsigned transfer artifacts (BTC/EVM/Solana) with full preflight. **Phase 3** adds historical USD
+prices, per-account FIFO cost-basis/PnL, CSV export, opening-balance lots, and reconciliation
+against external bookkeeping exports. Transaction categorization ([#33](https://github.com/MegaPhoenix92/coinwatch/issues/33)) is deferred as optional polish. coinwatch still never signs or broadcasts.
 
 ## Setup
 
@@ -133,9 +135,10 @@ JSON/CSV diff artifacts and never writes back to any bookkeeping system.
 
 - **Phase 1 — Watch-only read (MVP):** portfolio + live USD valuation + receive addresses +
   transaction history across BTC / EVM / Solana. CLI agent, read-only tools, zero signing code.
-- **Phase 2 — Prepare outbound:** per-chain *unsigned* transaction construction + handoff to an
-  external signer (verify destination + amount on-device before signing).
-- **Phase 3 — Reporting & bookkeeping:** categorization, CSV export, cost-basis / PnL.
+- **Phase 2 — Prepare outbound (done):** per-chain *unsigned* transaction construction + handoff
+  to an external signer (verify destination + amount on-device before signing).
+- **Phase 3 — Reporting & bookkeeping (done):** CSV export, cost-basis / PnL, opening balances,
+  reconciliation. Semantic categorization (fees / swaps / income) tracked in #33.
 
 ## Architecture
 
