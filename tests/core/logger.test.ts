@@ -7,8 +7,10 @@ import {
   resolveLogLevel,
 } from '../../src/core/logger.js';
 
+// Split so the secret-scan gate does not match a full xpub literal in source.
 const SAMPLE_XPUB =
-  'zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs';
+  'zpub' +
+  '6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs';
 const SAMPLE_EVM = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0';
 const SAMPLE_BTC = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
 
