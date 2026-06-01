@@ -19,7 +19,8 @@ You supply only **public** xpubs / account descriptors / watch addresses.
 Phases 1–3 are implemented as a watch-only CLI agent. It reads configured public account
 descriptors, queries provider APIs through adapter seams, exposes nine watch-only MCP tools, and
 stores optional labels / transaction cache in **Cloud SQL (PostgreSQL)** when `DATABASE_URL` is set,
-or a local SQLite file for dev (`coinwatch.db`). **Phase 2** builds
+or a local SQLite file for dev (`coinwatch.db`). Transaction history for `get_history` and PnL is always
+fetched live from providers (write-through cache only; decision #49). **Phase 2** builds
 unsigned transfer artifacts (BTC/EVM/Solana) with full preflight. **Phase 3** adds historical USD
 prices, per-account FIFO cost-basis/PnL, CSV export, opening-balance lots, reconciliation against
 external bookkeeping exports, and rules-first transaction categorization with manual overrides.
