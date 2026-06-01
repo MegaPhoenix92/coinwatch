@@ -176,35 +176,54 @@ function validateAccountSemantics(accounts: AccountDescriptor[]): string[] {
   return issues;
 }
 
+export type ConfigParseResult<T> = { ok: true; value: T } | { ok: false; issues: string[] };
+
 function invalidAccountsError(path: string, issues: string[]): Error {
   const message = issues.map((issue) => `  - ${issue}`).join('\n');
   return new Error(`Invalid accounts config at ${path}:\n${message}`);
 }
 
-export function loadAccounts(path: string): AccountDescriptor[] {
-  let raw: unknown;
+function readJsonFile(path: string): ConfigParseResult<unknown> {
+  if (!existsSync(path)) {
+    return { ok: false, issues: [`file not found: ${path}`] };
+  }
   try {
-    raw = JSON.parse(readFileSync(path, 'utf8'));
+    return { ok: true, value: JSON.parse(readFileSync(path, 'utf8')) };
   } catch {
-    throw new Error(`Invalid accounts config at ${path}: file is not valid JSON`);
+    return { ok: false, issues: ['file is not valid JSON'] };
+  }
+}
+
+export function parseAccountsFile(path: string): ConfigParseResult<AccountDescriptor[]> {
+  const raw = readJsonFile(path);
+  if (!raw.ok) {
+    return raw;
   }
 
-  const parsed = accountsSchema.safeParse(raw);
+  const parsed = accountsSchema.safeParse(raw.value);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((issue) => {
-      const path = issue.path.join('.') || '(root)';
-      return `${path}: ${issue.message}`;
+      const issuePath = issue.path.join('.') || '(root)';
+      return `${issuePath}: ${issue.message}`;
     });
-    throw invalidAccountsError(path, issues);
+    return { ok: false, issues };
   }
 
   const accounts = parsed.data as AccountDescriptor[];
   const semanticIssues = validateAccountSemantics(accounts);
   if (semanticIssues.length > 0) {
-    throw invalidAccountsError(path, semanticIssues);
+    return { ok: false, issues: semanticIssues };
   }
 
-  return accounts;
+  return { ok: true, value: accounts };
+}
+
+export function loadAccounts(path: string): AccountDescriptor[] {
+  const parsed = parseAccountsFile(path);
+  if (!parsed.ok) {
+    throw invalidAccountsError(path, parsed.issues);
+  }
+  return parsed.value;
 }
 
 function invalidOpeningBalancesError(path: string, issues: string[]): Error {
@@ -246,36 +265,45 @@ function validateOpeningBalancesSemantics(
   return issues;
 }
 
-export function loadOpeningBalances(
+export function parseOpeningBalancesFile(
   path: string,
   accounts: readonly AccountDescriptor[] = [],
-): OpeningBalancesConfig {
+): ConfigParseResult<OpeningBalancesConfig> {
   if (!existsSync(path)) {
-    return { openingLots: [], adjustments: [] };
+    return { ok: true, value: { openingLots: [], adjustments: [] } };
   }
 
-  let raw: unknown;
-  try {
-    raw = JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    throw new Error(`Invalid opening balances config at ${path}: file is not valid JSON`);
+  const raw = readJsonFile(path);
+  if (!raw.ok) {
+    return raw;
   }
 
-  const parsed = openingBalancesSchema.safeParse(raw);
+  const parsed = openingBalancesSchema.safeParse(raw.value);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((issue) => {
-      const path = issue.path.join('.') || '(root)';
-      return `${path}: ${issue.message}`;
+      const issuePath = issue.path.join('.') || '(root)';
+      return `${issuePath}: ${issue.message}`;
     });
-    throw invalidOpeningBalancesError(path, issues);
+    return { ok: false, issues };
   }
 
   const config = parsed.data as OpeningBalancesConfig;
   const semanticIssues = validateOpeningBalancesSemantics(config, accounts);
   if (semanticIssues.length > 0) {
-    throw invalidOpeningBalancesError(path, semanticIssues);
+    return { ok: false, issues: semanticIssues };
   }
-  return config;
+  return { ok: true, value: config };
+}
+
+export function loadOpeningBalances(
+  path: string,
+  accounts: readonly AccountDescriptor[] = [],
+): OpeningBalancesConfig {
+  const parsed = parseOpeningBalancesFile(path, accounts);
+  if (!parsed.ok) {
+    throw invalidOpeningBalancesError(path, parsed.issues);
+  }
+  return parsed.value;
 }
 
 export interface CoinwatchEnv {
