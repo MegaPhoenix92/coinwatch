@@ -12,6 +12,11 @@ const TEST_PUBLIC_KEY = secp256k1.getPublicKey(
   true,
 );
 const BTC_TESTNET = btc.p2wpkh(TEST_PUBLIC_KEY, btc.TEST_NETWORK).address;
+// Mainnet recipient variants the validator must accept (derived, not hardcoded).
+const BTC_P2PKH = btc.p2pkh(TEST_PUBLIC_KEY, btc.NETWORK).address; // 1...
+const BTC_P2SH = btc.p2sh(btc.p2wpkh(TEST_PUBLIC_KEY, btc.NETWORK), btc.NETWORK).address; // 3...
+const BTC_P2TR = btc.p2tr(TEST_PUBLIC_KEY.slice(1), undefined, btc.NETWORK).address; // bc1p...
+const EVM_LOWERCASE = EVM_CHECKSUM.toLowerCase();
 
 describe('assertValidRecipient', () => {
   it('accepts valid recipients for each supported chain family', () => {
@@ -19,6 +24,20 @@ describe('assertValidRecipient', () => {
     expect(() => assertValidRecipient('ethereum', EVM_CHECKSUM)).not.toThrow();
     expect(() => assertValidRecipient('base', EVM_CHECKSUM)).not.toThrow();
     expect(() => assertValidRecipient('solana', SOLANA_ADDRESS)).not.toThrow();
+  });
+
+  it('accepts all standard mainnet BTC script types (P2PKH, P2SH, bech32, taproot)', () => {
+    expect(BTC_P2PKH.startsWith('1')).toBe(true);
+    expect(BTC_P2SH.startsWith('3')).toBe(true);
+    expect(BTC_P2TR.startsWith('bc1p')).toBe(true);
+    for (const addr of [BTC_P2PKH, BTC_P2SH, BTC_MAINNET, BTC_P2TR]) {
+      expect(() => assertValidRecipient('bitcoin', addr)).not.toThrow();
+    }
+  });
+
+  it('accepts an all-lowercase EVM address (valid under viem strict mode)', () => {
+    expect(EVM_LOWERCASE).toBe(EVM_LOWERCASE.toLowerCase());
+    expect(() => assertValidRecipient('ethereum', EVM_LOWERCASE)).not.toThrow();
   });
 
   it('rejects bitcoin testnet/regtest and malformed recipients with specific messages', () => {
