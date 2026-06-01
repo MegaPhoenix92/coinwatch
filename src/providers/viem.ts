@@ -118,7 +118,7 @@ export class ViemProvider implements EvmDataProvider {
   constructor(options: ViemProviderOptions = {}) {
     const rpcUrls = buildRpcUrls(options.alchemyApiKey, options.rpcUrls);
     this.hasAlchemy = options.alchemyApiKey !== undefined && options.alchemyApiKey.length > 0;
-    this.resilience = options.resilience ?? {};
+    this.resilience = { diagnosticsScope: 'viem', ...options.resilience };
     this.clients = {
       ethereum: options.clients?.ethereum ?? createPublicClient({
         chain: VIEM_CHAINS.ethereum,

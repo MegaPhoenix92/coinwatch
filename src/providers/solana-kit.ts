@@ -109,7 +109,7 @@ export class SolanaKitProvider implements SolDataProvider {
 
   constructor(rpcUrl = DEFAULT_SOLANA_RPC, resilience: ProviderResilienceConfig = {}) {
     this.rpc = createSolanaRpc(rpcUrl);
-    this.resilience = resilience;
+    this.resilience = { diagnosticsScope: 'solana', ...resilience };
   }
 
   async getLamports(addr: string): Promise<bigint> {

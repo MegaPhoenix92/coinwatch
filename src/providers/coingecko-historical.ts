@@ -47,7 +47,7 @@ export class CoinGeckoHistoricalPriceProvider implements HistoricalPriceProvider
     this.apiKey = opts.apiKey;
     this.baseUrl = opts.baseUrl ?? DEMO_BASE;
     this.fetchFn = opts.fetchFn ?? fetch;
-    this.resilience = opts.resilience ?? {};
+    this.resilience = { diagnosticsScope: 'coingecko-historical', ...opts.resilience };
   }
 
   async getHistoricalUsdPrice(

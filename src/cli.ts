@@ -21,6 +21,7 @@ import {
 import { MempoolProvider } from './providers/mempool.js';
 import { createSolanaKitProvider } from './providers/solana-kit.js';
 import { ViemProvider } from './providers/viem.js';
+import { log } from './core/logger.js';
 import { PortfolioService } from './services/portfolio-service.js';
 
 export const SYSTEM_PROMPT = [
@@ -233,8 +234,7 @@ export async function main(): Promise<void> {
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((error) => {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[coinwatch] fatal: ${message}`);
+    log.error('fatal', { error });
     process.exitCode = 1;
   });
 }
