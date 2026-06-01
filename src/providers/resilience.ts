@@ -1,3 +1,5 @@
+import { log } from '../core/logger.js';
+
 export class TimeoutError extends Error {
   constructor(ms: number) {
     super(`provider request timed out after ${ms}ms`);
@@ -22,6 +24,8 @@ export interface RetryOptions {
   baseDelayMs?: number;
   isRetryable?: (error: unknown) => boolean;
   sleep?: SleepFn;
+  /** When set, retry/failure events are emitted through the redacted structured logger. */
+  diagnosticsScope?: string;
 }
 
 export interface ProviderResilienceConfig extends RetryOptions {
@@ -109,9 +113,25 @@ export async function withRetry<T>(
     } catch (error) {
       lastError = error;
       if (attempt === retries || !isRetryable(error)) {
+        if (opts.diagnosticsScope !== undefined) {
+          log.warn('provider request failed', {
+            scope: opts.diagnosticsScope,
+            attempt,
+            retries,
+            error,
+          });
+        }
         throw error;
       }
 
+      if (opts.diagnosticsScope !== undefined) {
+        log.debug('provider request retry', {
+          scope: opts.diagnosticsScope,
+          attempt: attempt + 1,
+          retries,
+          error,
+        });
+      }
       await wait(baseDelayMs * 2 ** attempt);
     }
   }

@@ -24,7 +24,7 @@ export class CoinGeckoPriceProvider implements PriceProvider {
     this.apiKey = opts.apiKey;
     this.baseUrl = opts.baseUrl ?? DEMO_BASE;
     this.fetchFn = opts.fetchFn ?? fetch;
-    this.resilience = opts.resilience ?? {};
+    this.resilience = { diagnosticsScope: 'coingecko', ...opts.resilience };
   }
 
   async getUsdPrices(coingeckoIds: string[]): Promise<Map<string, number>> {

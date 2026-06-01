@@ -26,7 +26,7 @@ export class MempoolProvider implements BtcDataProvider {
     opts: MempoolProviderOptions = {},
   ) {
     this.fetchFn = opts.fetchFn ?? fetch;
-    this.resilience = opts.resilience ?? {};
+    this.resilience = { diagnosticsScope: 'mempool', ...opts.resilience };
   }
 
   async getAddress(address: string): Promise<MempoolAddressResponse> {
