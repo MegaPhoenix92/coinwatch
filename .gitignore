@@ -17,6 +17,7 @@ config/*.local.json
 # Dependencies / build / cache
 node_modules
 dist/
+coinwatch-*.tgz
 *.db
 *.db-*
 coinwatch.db*

@@ -23,6 +23,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Build release artifact
+        run: |
+          npm run build
+          npm run release:verify
+
       - name: Test
         run: npm test
 
