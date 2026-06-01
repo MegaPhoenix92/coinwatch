@@ -12,6 +12,7 @@ import {
   runConfigTemplate,
   runConfigValidate,
 } from './cli/config-commands.js';
+import { parseRegistryCommand, runRegistryVerify } from './cli/registry-commands.js';
 import { loadAccounts, loadEnv, loadOpeningBalances } from './config/load.js';
 import {
   DEFAULT_ACCOUNTS_PATH,
@@ -171,6 +172,14 @@ export async function* userMessages(): AsyncGenerator<SDKUserMessage> {
 }
 
 export async function main(): Promise<void> {
+  const registryCommand = parseRegistryCommand(process.argv.slice(2));
+  if (registryCommand !== undefined) {
+    if (!runRegistryVerify(registryCommand)) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   const configCommand = parseConfigCommand(process.argv.slice(2));
   if (configCommand !== undefined) {
     if (configCommand.kind === 'validate') {
