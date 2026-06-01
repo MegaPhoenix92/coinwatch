@@ -14,6 +14,7 @@ import {
 } from './cli/config-commands.js';
 import { parseRegistryCommand, runRegistryVerify } from './cli/registry-commands.js';
 import { loadAccounts, loadEnv, loadOpeningBalances } from './config/load.js';
+import { loadProviderEndpoints, resolveSolanaRpcUrl } from './config/provider-endpoints.js';
 import {
   DEFAULT_ACCOUNTS_PATH,
   DEFAULT_OPENING_BALANCES_PATH,
@@ -193,20 +194,28 @@ export async function main(): Promise<void> {
   }
 
   const env = loadEnv();
+  const providerEndpoints = loadProviderEndpoints();
   const accounts = loadAccounts(DEFAULT_ACCOUNTS_PATH);
   const openingBalances = loadOpeningBalances(DEFAULT_OPENING_BALANCES_PATH, accounts);
 
   const adapters = new Map<ChainFamily, ChainAdapter>();
-  adapters.set('bitcoin', new BitcoinAdapter(new MempoolProvider()));
-  adapters.set('evm', new EvmAdapter(new ViemProvider({ alchemyApiKey: env.alchemyApiKey })));
+  adapters.set(
+    'bitcoin',
+    new BitcoinAdapter(new MempoolProvider(providerEndpoints.mempoolApiBase)),
+  );
+  adapters.set(
+    'evm',
+    new EvmAdapter(
+      new ViemProvider({
+        alchemyApiKey: env.alchemyApiKey,
+        rpcUrls: providerEndpoints.evmRpcUrls,
+      }),
+    ),
+  );
   adapters.set(
     'solana',
     new SolanaAdapter(
-      createSolanaKitProvider(
-        env.heliusApiKey === undefined
-          ? undefined
-          : `https://mainnet.helius-rpc.com/?api-key=${env.heliusApiKey}`,
-      ),
+      createSolanaKitProvider(resolveSolanaRpcUrl(providerEndpoints, env.heliusApiKey)),
     ),
   );
 

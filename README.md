@@ -197,7 +197,11 @@ Claude Agent SDK + MCP tools.
   private, or provider keys.
 - Do not paste real xpubs or provider keys into issues, PRs, logs, prompts, or screenshots.
 - Data providers see the addresses you ask them about: mempool.space-compatible Bitcoin APIs,
-  Alchemy for EVM, Helius / public Solana RPC, and CoinGecko for price IDs.
+  Alchemy for EVM, Helius / public Solana RPC, and CoinGecko for price IDs. coinwatch does not
+  prevent provider-side address clustering; use private or self-hosted endpoints when that matters.
+- Optional env overrides (see `.env.example`): `MEMPOOL_API_BASE`, `SOLANA_RPC_URL`, and per-chain
+  `EVM_RPC_*` URLs take precedence over vendor API keys. Tor/proxy and per-account provider isolation
+  are out of scope for v1 — run separate processes with different configs if you need isolation.
 - `coinwatch.db` is local. It caches labels and public transaction records only; it never stores
   signing keys.
 - Every receive address returned by the CLI is still unverified until you confirm it on your
