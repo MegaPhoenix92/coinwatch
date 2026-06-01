@@ -9,6 +9,8 @@ import {
 import type { SelfTransferLeg } from '../core/self-transfer.js';
 import type { Tx } from '../domain/types.js';
 
+export type LotSource = 'chain' | 'manual' | 'override';
+
 export interface PnlEvent {
   accountId: string;
   chain: Chain;
@@ -20,7 +22,7 @@ export interface PnlEvent {
   date?: UtcDateString;
   txid: string;
   declaredUnitBasisUsd?: number;
-  source?: 'chain' | 'manual';
+  source?: LotSource;
 }
 
 export interface OpenLot {
@@ -33,7 +35,7 @@ export interface OpenLot {
   acquiredDate: UtcDateString;
   acquisitionTxid: string;
   unitBasisUsd: number;
-  source: 'chain' | 'manual';
+  source: LotSource;
 }
 
 export interface ConsumedLot {
@@ -42,7 +44,7 @@ export interface ConsumedLot {
   acquisitionTxid: string;
   rawAmount: bigint;
   basisUsd: number;
-  source: 'chain' | 'manual';
+  source: LotSource;
 }
 
 export interface RealizedRow {

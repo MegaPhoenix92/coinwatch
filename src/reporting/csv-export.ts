@@ -4,14 +4,14 @@ import { formatUnits } from '../core/money.js';
 import { assetBySymbol } from '../domain/assets.js';
 import type { PnlReport } from './pnl.js';
 
-export const SCHEMA_VERSION = '2';
+export const SCHEMA_VERSION = '3';
 
 /**
- * PnL CSV schema v2 exports the computed PnlReport, not raw chain activity.
+ * PnL CSV schema v3 exports the computed PnlReport, not raw chain activity.
  * Files are ledger-shaped: realized disposals, remaining open lots, and
  * warnings. BigInt raw quantities are decimal strings; USD columns are JS
- * number strings from the PnL engine. v2 adds lot source provenance for manual
- * opening balances and basis overrides.
+ * number strings from the PnL engine. Lot `source` provenance: `chain` (priced),
+ * `manual` (opening balance / declared inbound), `override` (basis_override).
  */
 const REALIZED_HEADER = [
   'schema_version',
