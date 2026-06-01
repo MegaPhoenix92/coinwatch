@@ -11,6 +11,12 @@ import type { HistoricalPriceProvider } from '../adapters/chain-adapter.js';
 import type { OpeningBalancesConfig } from '../config/load.js';
 import { pnlReportToCsvBundle, writePnlCsvBundle } from '../reporting/csv-export.js';
 import { computeAccountScopedPnl } from '../reporting/pnl-report.js';
+import {
+  diffReconRecords,
+  loadReconRecords,
+  realizedRowsToReconRecords,
+  writeReconArtifacts,
+} from '../reporting/reconcile.js';
 import { writeArtifactFile } from './artifact-file.js';
 
 type ToolResult = { content: { type: 'text'; text: string }[] };
@@ -125,6 +131,33 @@ export function buildHandlers(
         ),
       );
     },
+
+    reconcile: async (args: {
+      externalPath: string;
+      accountIds?: string[];
+      from?: string;
+      to?: string;
+      usdToleranceUsd?: number;
+    }): Promise<ToolResult> => {
+      if (pnlExport === undefined) {
+        throw new Error('PnL export is not configured.');
+      }
+      const selected = selectAccounts(accounts, args.accountIds);
+      const report = await computeAccountScopedPnl(service, selected, {
+        priceProvider: pnlExport.priceProvider,
+        currentUsdPrice: pnlExport.currentUsdPrice,
+        openingBalances: pnlExport.openingBalances,
+        from: args.from === undefined ? undefined : assertUtcDateString(args.from),
+        to: args.to === undefined ? undefined : assertUtcDateString(args.to),
+      });
+      const external = loadReconRecords(args.externalPath);
+      const diff = diffReconRecords(realizedRowsToReconRecords(report), external.records, {
+        usdToleranceUsd: args.usdToleranceUsd,
+        invalidExternalRows: external.invalidExternalRows,
+      });
+      const files = writeReconArtifacts(diff, `${Date.now()}`, pnlExport.outputDir);
+      return asText(JSON.stringify({ files, summary: diff.summary }, null, 2));
+    },
   };
 }
 
@@ -200,6 +233,27 @@ export function buildTools(
             from?: string;
             to?: string;
             limit?: number;
+          },
+        ),
+    ),
+    tool(
+      'reconcile',
+      'Compare coinwatch realized PnL disposals against a generic external JSON/CSV export and write diff artifacts. Read-only; never writes back to any bookkeeping system.',
+      {
+        externalPath: z.string(),
+        accountIds: z.array(z.string()).optional(),
+        from: z.string().optional(),
+        to: z.string().optional(),
+        usdToleranceUsd: z.number().optional(),
+      },
+      async (args) =>
+        handlers.reconcile(
+          args as {
+            externalPath: string;
+            accountIds?: string[];
+            from?: string;
+            to?: string;
+            usdToleranceUsd?: number;
           },
         ),
     ),

@@ -42,6 +42,14 @@ interface ExportPnlCommand {
   limit?: number;
 }
 
+interface ReconcileCommand {
+  externalPath: string;
+  accountIds?: string[];
+  from?: string;
+  to?: string;
+  usdToleranceUsd?: number;
+}
+
 export function buildQueryOptions(server: CoinwatchServer): Options {
   return {
     model: 'claude-opus-4-8',
@@ -88,6 +96,48 @@ export function parseExportPnlCommand(argv: readonly string[]): ExportPnlCommand
     command.accountIds = accountIds;
   }
   return command;
+}
+
+export function parseReconcileCommand(argv: readonly string[]): ReconcileCommand | undefined {
+  if (argv[0] !== 'reconcile') {
+    return undefined;
+  }
+
+  const command: Partial<ReconcileCommand> = {};
+  const accountIds: string[] = [];
+  for (let i = 1; i < argv.length; i += 1) {
+    const arg = argv[i];
+    const next = argv[i + 1];
+    if (arg === '--external' && next !== undefined) {
+      command.externalPath = next;
+      i += 1;
+    } else if ((arg === '--account' || arg === '--account-id') && next !== undefined) {
+      accountIds.push(next);
+      i += 1;
+    } else if (arg === '--from' && next !== undefined) {
+      command.from = next;
+      i += 1;
+    } else if (arg === '--to' && next !== undefined) {
+      command.to = next;
+      i += 1;
+    } else if (arg === '--usd-tolerance' && next !== undefined) {
+      const parsed = Number(next);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error(`Invalid --usd-tolerance "${next}": expected a non-negative number.`);
+      }
+      command.usdToleranceUsd = parsed;
+      i += 1;
+    } else {
+      throw new Error(`Unknown reconcile argument: ${arg}`);
+    }
+  }
+  if (command.externalPath === undefined) {
+    throw new Error('reconcile requires --external <path>.');
+  }
+  if (accountIds.length > 0) {
+    command.accountIds = accountIds;
+  }
+  return command as ReconcileCommand;
 }
 
 export async function* userMessages(): AsyncGenerator<SDKUserMessage> {
@@ -151,6 +201,13 @@ export async function main(): Promise<void> {
     if (exportCommand !== undefined) {
       const handlers = buildHandlers(service, accounts, store, pnlExport);
       const result = await handlers.export_pnl(exportCommand);
+      output.write(`${result.content[0].text}\n`);
+      return;
+    }
+    const reconcileCommand = parseReconcileCommand(process.argv.slice(2));
+    if (reconcileCommand !== undefined) {
+      const handlers = buildHandlers(service, accounts, store, pnlExport);
+      const result = await handlers.reconcile(reconcileCommand);
       output.write(`${result.content[0].text}\n`);
       return;
     }

@@ -84,7 +84,7 @@ function makeFakeService(): PortfolioService {
 }
 
 describe('buildHandlers', () => {
-  it('exposes exactly the 6 watch-only handlers by name', () => {
+  it('exposes exactly the 7 watch-only handlers by name', () => {
     const handlers = buildHandlers(makeFakeService(), accounts);
     expect(Object.keys(handlers).sort()).toEqual([
       'derive_receive_address',
@@ -93,6 +93,7 @@ describe('buildHandlers', () => {
       'get_portfolio',
       'list_addresses',
       'prepare_transfer',
+      'reconcile',
     ]);
   });
 
@@ -143,9 +144,9 @@ describe('buildHandlers', () => {
 });
 
 describe('buildTools', () => {
-  it('wraps the 6 handlers into SDK tool definitions', () => {
+  it('wraps the 7 handlers into SDK tool definitions', () => {
     const tools = buildTools(makeFakeService(), accounts);
-    expect(tools).toHaveLength(6);
+    expect(tools).toHaveLength(7);
   });
 });
 
@@ -158,7 +159,7 @@ describe('buildHandlers — store-wired (labels)', () => {
 
     const handlers = buildHandlers(makeFakeService(), accounts, fakeStore);
 
-    // still exactly the six watch-only handlers
+    // still exactly the seven watch-only handlers
     expect(Object.keys(handlers).sort()).toEqual([
       'derive_receive_address',
       'export_pnl',
@@ -166,6 +167,7 @@ describe('buildHandlers — store-wired (labels)', () => {
       'get_portfolio',
       'list_addresses',
       'prepare_transfer',
+      'reconcile',
     ]);
 
     const listed = JSON.parse((await handlers.list_addresses()).content[0].text) as Array<

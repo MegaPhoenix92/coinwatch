@@ -239,6 +239,7 @@ describe('multi-chain prepare_transfer e2e and Phase-2 DoD guards', () => {
       'get_portfolio',
       'list_addresses',
       'prepare_transfer',
+      'reconcile',
     ]);
     expect(names.some((name) => /sign|broadcast/i.test(name))).toBe(false);
 
