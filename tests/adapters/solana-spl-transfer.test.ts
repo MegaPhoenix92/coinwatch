@@ -39,10 +39,13 @@ const account = {
 class FakeSolProvider implements SolDataProvider {
   readonly existsQueries: string[] = [];
 
-  constructor(private readonly existingAccounts: Set<string>) {}
+  constructor(
+    private readonly existingAccounts: Set<string>,
+    private readonly lamports = 10_000_000n,
+  ) {}
 
   async getLamports(): Promise<bigint> {
-    return 0n;
+    return this.lamports;
   }
 
   async getTokenAccounts(): Promise<SolTokenAccount[]> {

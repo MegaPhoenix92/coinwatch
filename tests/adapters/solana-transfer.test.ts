@@ -28,7 +28,7 @@ const account = {
 
 const fake: SolDataProvider = {
   async getLamports(): Promise<bigint> {
-    return 0n;
+    return 10_000_000n;
   },
   async getTokenAccounts(): Promise<SolTokenAccount[]> {
     return [];
@@ -47,7 +47,7 @@ const fake: SolDataProvider = {
   },
 };
 
-function trackingSolProvider(): SolDataProvider & {
+function trackingSolProvider(lamports = 10_000_000n): SolDataProvider & {
   calls: {
     getLamports: number;
     getTokenAccounts: number;
@@ -69,7 +69,7 @@ function trackingSolProvider(): SolDataProvider & {
     calls,
     async getLamports(): Promise<bigint> {
       calls.getLamports += 1;
-      return 0n;
+      return lamports;
     },
     async getTokenAccounts(): Promise<SolTokenAccount[]> {
       calls.getTokenAccounts += 1;
@@ -96,7 +96,8 @@ function trackingSolProvider(): SolDataProvider & {
 
 describe('SolanaAdapter.buildUnsignedTransfer', () => {
   it('builds unsigned Solana message bytes for a native SOL transfer', async () => {
-    const adapter = new SolanaAdapter(fake);
+    const provider = trackingSolProvider();
+    const adapter = new SolanaAdapter(provider);
     const artifact = await adapter.buildUnsignedTransfer({
       account,
       chain: 'solana',
@@ -104,6 +105,7 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
       asset: 'SOL',
       rawAmount: 1_000_000n,
     });
+    expect(provider.calls.getLamports).toBe(1);
 
     expect(adapter.capabilities.preparesTransfers).toBe(true);
     expect(artifact.kind).toBe('solana-message');
@@ -166,6 +168,40 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
       decimals: 6,
       feeAsset: 'SOL',
     });
+  });
+
+  it('rejects native SOL transfers when lamports cannot cover amount + network fee', async () => {
+    const provider = trackingSolProvider(1_004_999n);
+    const adapter = new SolanaAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'solana',
+        to: TO,
+        asset: 'SOL',
+        rawAmount: 1_000_000n,
+      }),
+    ).rejects.toThrow(/Insufficient SOL balance for amount \+ network fee/);
+    expect(provider.calls.getLatestBlockhash).toBe(1);
+    expect(provider.calls.getLamports).toBe(1);
+  });
+
+  it('rejects SPL transfers when lamports cannot cover the network fee', async () => {
+    const provider = trackingSolProvider(4_999n);
+    const adapter = new SolanaAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'solana',
+        to: TO,
+        asset: 'USDC',
+        rawAmount: 1_000_000n,
+      }),
+    ).rejects.toThrow(/Insufficient SOL balance for amount \+ network fee/);
+    expect(provider.calls.getAccountExists).toBe(2);
+    expect(provider.calls.getLamports).toBe(1);
   });
 
   it('rejects invalid recipients before reading provider data', async () => {

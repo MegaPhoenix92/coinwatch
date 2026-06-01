@@ -69,7 +69,7 @@ class FakeBtcProvider implements BtcDataProvider {
 
 class FakeEvmProvider implements EvmDataProvider {
   async getNativeBalance(): Promise<bigint> {
-    return 0n;
+    return 10_000_000_000_000_000_000n;
   }
 
   async getTokenBalances(): Promise<EvmTokenBalance[]> {
@@ -99,7 +99,7 @@ class FakeEvmProvider implements EvmDataProvider {
 
 class FakeSolProvider implements SolDataProvider {
   async getLamports(): Promise<bigint> {
-    return 0n;
+    return 10_000_000n;
   }
 
   async getTokenAccounts(): Promise<SolTokenAccount[]> {
