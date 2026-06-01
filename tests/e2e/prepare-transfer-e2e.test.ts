@@ -234,6 +234,7 @@ describe('multi-chain prepare_transfer e2e and Phase-2 DoD guards', () => {
     const names = buildTools(service, accounts).map((mcpTool) => mcpTool.name).sort();
     expect(names).toEqual([
       'derive_receive_address',
+      'export_pnl',
       'get_history',
       'get_portfolio',
       'list_addresses',

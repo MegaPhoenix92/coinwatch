@@ -4,8 +4,12 @@ import type { PortfolioService } from '../services/portfolio-service.js';
 import type { AccountDescriptor } from '../domain/account.js';
 import type { AssetSymbol } from '../domain/assets.js';
 import type { Chain } from '../domain/chains.js';
+import { assertUtcDateString } from '../domain/historical-price.js';
 import type { Tx } from '../domain/types.js';
 import type { Store } from '../db/store.js';
+import type { HistoricalPriceProvider } from '../adapters/chain-adapter.js';
+import { pnlReportToCsvBundle, writePnlCsvBundle } from '../reporting/csv-export.js';
+import { computeAccountScopedPnl } from '../reporting/pnl-report.js';
 import { writeArtifactFile } from './artifact-file.js';
 
 type ToolResult = { content: { type: 'text'; text: string }[] };
@@ -14,10 +18,31 @@ const asText = (text: string): ToolResult => ({
   content: [{ type: 'text', text }],
 });
 
+export interface PnlExportDependencies {
+  priceProvider: HistoricalPriceProvider;
+  currentUsdPrice(coingeckoId: string): number | undefined;
+  outputDir?: string;
+}
+
+function selectAccounts(accounts: AccountDescriptor[], ids?: string[]): AccountDescriptor[] {
+  if (ids === undefined) {
+    return accounts;
+  }
+  const requested = new Set(ids);
+  const selected = accounts.filter((account) => requested.has(account.id));
+  const found = new Set(selected.map((account) => account.id));
+  const missing = ids.filter((id) => !found.has(id));
+  if (missing.length > 0) {
+    throw new Error(`Unknown account id(s): ${missing.join(', ')}`);
+  }
+  return selected;
+}
+
 export function buildHandlers(
   service: PortfolioService,
   accounts: AccountDescriptor[],
   store?: Store,
+  pnlExport?: PnlExportDependencies,
 ) {
   return {
     get_portfolio: async (): Promise<ToolResult> => {
@@ -65,6 +90,38 @@ export function buildHandlers(
       const file = writeArtifactFile(artifact, `${Date.now()}`);
       return asText(JSON.stringify({ ...artifact, file }, null, 2));
     },
+
+    export_pnl: async (args: {
+      accountIds?: string[];
+      from?: string;
+      to?: string;
+      limit?: number;
+    }): Promise<ToolResult> => {
+      if (pnlExport === undefined) {
+        throw new Error('PnL export is not configured.');
+      }
+      const selected = selectAccounts(accounts, args.accountIds);
+      const report = await computeAccountScopedPnl(service, selected, {
+        priceProvider: pnlExport.priceProvider,
+        currentUsdPrice: pnlExport.currentUsdPrice,
+        from: args.from === undefined ? undefined : assertUtcDateString(args.from),
+        to: args.to === undefined ? undefined : assertUtcDateString(args.to),
+        limit: args.limit,
+      });
+      const bundle = pnlReportToCsvBundle(report);
+      const files = writePnlCsvBundle(bundle, `${Date.now()}`, pnlExport.outputDir);
+      return asText(
+        JSON.stringify(
+          {
+            files,
+            aggregateTotals: report.aggregateTotals,
+            warnings: report.warnings,
+          },
+          null,
+          2,
+        ),
+      );
+    },
   };
 }
 
@@ -72,8 +129,9 @@ export function buildTools(
   service: PortfolioService,
   accounts: AccountDescriptor[],
   store?: Store,
+  pnlExport?: PnlExportDependencies,
 ) {
-  const handlers = buildHandlers(service, accounts, store);
+  const handlers = buildHandlers(service, accounts, store, pnlExport);
 
   return [
     tool(
@@ -120,6 +178,25 @@ export function buildTools(
             amount: string;
             chain?: Chain;
             feeRate?: string;
+          },
+        ),
+    ),
+    tool(
+      'export_pnl',
+      'Export the computed watch-only FIFO PnL report to local CSV files. Read-only; never signs or broadcasts.',
+      {
+        accountIds: z.array(z.string()).optional(),
+        from: z.string().optional(),
+        to: z.string().optional(),
+        limit: z.number().optional(),
+      },
+      async (args) =>
+        handlers.export_pnl(
+          args as {
+            accountIds?: string[];
+            from?: string;
+            to?: string;
+            limit?: number;
           },
         ),
     ),

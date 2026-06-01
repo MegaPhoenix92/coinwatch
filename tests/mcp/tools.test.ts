@@ -84,10 +84,11 @@ function makeFakeService(): PortfolioService {
 }
 
 describe('buildHandlers', () => {
-  it('exposes exactly the 5 watch-only handlers by name', () => {
+  it('exposes exactly the 6 watch-only handlers by name', () => {
     const handlers = buildHandlers(makeFakeService(), accounts);
     expect(Object.keys(handlers).sort()).toEqual([
       'derive_receive_address',
+      'export_pnl',
       'get_history',
       'get_portfolio',
       'list_addresses',
@@ -142,9 +143,9 @@ describe('buildHandlers', () => {
 });
 
 describe('buildTools', () => {
-  it('wraps the 5 handlers into SDK tool definitions', () => {
+  it('wraps the 6 handlers into SDK tool definitions', () => {
     const tools = buildTools(makeFakeService(), accounts);
-    expect(tools).toHaveLength(5);
+    expect(tools).toHaveLength(6);
   });
 });
 
@@ -157,9 +158,10 @@ describe('buildHandlers — store-wired (labels)', () => {
 
     const handlers = buildHandlers(makeFakeService(), accounts, fakeStore);
 
-    // still exactly the five watch-only handlers
+    // still exactly the six watch-only handlers
     expect(Object.keys(handlers).sort()).toEqual([
       'derive_receive_address',
+      'export_pnl',
       'get_history',
       'get_portfolio',
       'list_addresses',
