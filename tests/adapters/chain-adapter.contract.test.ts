@@ -105,6 +105,9 @@ describe('ChainAdapter contract', () => {
       async getAccountExists(_address) {
         return true;
       },
+      async getMinimumBalanceForRentExemption(_space) {
+        return 890_880n;
+      },
     };
     const prices: PriceProvider = {
       async getUsdPrices(_coingeckoIds) {

@@ -121,6 +121,10 @@ class FakeSolProvider implements SolDataProvider {
   async getAccountExists(): Promise<boolean> {
     return true;
   }
+
+  async getMinimumBalanceForRentExemption(_space: bigint): Promise<bigint> {
+    return 890_880n;
+  }
 }
 
 function btcAccount(address: string): AccountDescriptor {

@@ -30,6 +30,7 @@ const account = {
 function trackingSolProvider(
   lamports = 10_000_000n,
   accountExists = true,
+  rentExemptMinLamports = SOL_RENT_EXEMPT_MIN_LAMPORTS,
 ): SolDataProvider & {
   calls: {
     getLamports: number;
@@ -38,10 +39,13 @@ function trackingSolProvider(
     getTransaction: number;
     getLatestBlockhash: number;
     getAccountExists: number;
+    getMinimumBalanceForRentExemption: number;
   };
   existsQueries: string[];
+  rentExemptQueries: bigint[];
 } {
   const existsQueries: string[] = [];
+  const rentExemptQueries: bigint[] = [];
   const calls = {
     getLamports: 0,
     getTokenAccounts: 0,
@@ -49,10 +53,12 @@ function trackingSolProvider(
     getTransaction: 0,
     getLatestBlockhash: 0,
     getAccountExists: 0,
+    getMinimumBalanceForRentExemption: 0,
   };
   return {
     calls,
     existsQueries,
+    rentExemptQueries,
     async getLamports(): Promise<bigint> {
       calls.getLamports += 1;
       return lamports;
@@ -77,6 +83,11 @@ function trackingSolProvider(
       calls.getAccountExists += 1;
       existsQueries.push(account);
       return accountExists;
+    },
+    async getMinimumBalanceForRentExemption(space: bigint): Promise<bigint> {
+      calls.getMinimumBalanceForRentExemption += 1;
+      rentExemptQueries.push(space);
+      return rentExemptMinLamports;
     },
   };
 }
@@ -213,6 +224,8 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
     ).rejects.toThrow(/Recipient SOL account does not exist yet.*890880 lamports/);
     expect(provider.calls.getLamports).toBe(1);
     expect(provider.calls.getAccountExists).toBe(1);
+    expect(provider.calls.getMinimumBalanceForRentExemption).toBe(1);
+    expect(provider.rentExemptQueries).toEqual([0n]);
     expect(provider.existsQueries).toEqual([TO]);
   });
 
@@ -231,6 +244,7 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
     expect(artifact.kind).toBe('solana-message');
     expect(artifact.summary.rawAmount).toBe(SOL_RENT_EXEMPT_MIN_LAMPORTS.toString());
     expect(provider.calls.getAccountExists).toBe(1);
+    expect(provider.calls.getMinimumBalanceForRentExemption).toBe(1);
     expect(provider.existsQueries).toEqual([TO]);
   });
 
@@ -249,7 +263,33 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
     expect(artifact.kind).toBe('solana-message');
     expect(artifact.summary.rawAmount).toBe('500000');
     expect(provider.calls.getAccountExists).toBe(1);
+    expect(provider.calls.getMinimumBalanceForRentExemption).toBe(0);
     expect(provider.existsQueries).toEqual([TO]);
+  });
+
+  it('uses the RPC-sourced rent minimum from the provider', async () => {
+    const provider = trackingSolProvider(10_000_000n, false, 750_000n);
+    const adapter = new SolanaAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'solana',
+        to: TO,
+        asset: 'SOL',
+        rawAmount: 700_000n,
+      }),
+    ).rejects.toThrow(/750000 lamports/);
+
+    const artifact = await adapter.buildUnsignedTransfer({
+      account,
+      chain: 'solana',
+      to: TO,
+      asset: 'SOL',
+      rawAmount: 750_000n,
+    });
+    expect(artifact.kind).toBe('solana-message');
+    expect(provider.calls.getMinimumBalanceForRentExemption).toBe(2);
   });
 
   it('rejects invalid recipients before reading provider data', async () => {
@@ -272,6 +312,7 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
       getTransaction: 0,
       getLatestBlockhash: 0,
       getAccountExists: 0,
+      getMinimumBalanceForRentExemption: 0,
     });
   });
 
@@ -304,6 +345,7 @@ describe('SolanaAdapter.buildUnsignedTransfer', () => {
       getTransaction: 0,
       getLatestBlockhash: 0,
       getAccountExists: 0,
+      getMinimumBalanceForRentExemption: 0,
     });
   });
 });

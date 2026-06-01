@@ -182,6 +182,14 @@ export class SolanaKitProvider implements SolDataProvider {
     );
     return res.value !== null;
   }
+
+  async getMinimumBalanceForRentExemption(space: bigint): Promise<bigint> {
+    const res = await withProviderResilience(
+      () => this.rpc.getMinimumBalanceForRentExemption(space).send(),
+      this.resilience,
+    );
+    return BigInt(res);
+  }
 }
 
 export function createSolanaKitProvider(
