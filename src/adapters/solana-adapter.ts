@@ -26,6 +26,7 @@ import type {
   SolRawTokenBalance,
   SolRawTx,
 } from './chain-adapter.js';
+import { inferSelfTransferLeg } from '../core/self-transfer.js';
 import { formatUnits } from '../core/money.js';
 import { assertSendable } from '../core/preflight.js';
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
@@ -236,6 +237,16 @@ function txFromDelta(raw: SolRawTx, delta: AssetDelta): Tx {
   };
   if (counterparty !== undefined) {
     tx.counterparty = counterparty;
+  }
+  if (direction === 'self') {
+    const leg = inferSelfTransferLeg({
+      watchedIncoming: delta.watchedIncoming,
+      watchedOutgoing: delta.watchedOutgoing,
+      net: delta.net,
+    });
+    if (leg !== undefined) {
+      tx.selfTransferLeg = leg;
+    }
   }
   return tx;
 }

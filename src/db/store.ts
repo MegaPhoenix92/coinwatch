@@ -31,6 +31,7 @@ interface SerializedTx {
   txid: string;
   timestamp?: number;
   direction: Tx['direction'];
+  selfTransferLeg?: Tx['selfTransferLeg'];
   symbol: AssetSymbol;
   raw: string;
   decimals: number;
@@ -112,6 +113,7 @@ export class Store {
           txid: tx.txid,
           timestamp: tx.timestamp,
           direction: tx.direction,
+          selfTransferLeg: tx.selfTransferLeg,
           symbol: tx.symbol,
           raw: tx.raw.toString(),
           decimals: tx.decimals,
@@ -137,6 +139,7 @@ export class Store {
         txid: serialized.txid,
         timestamp: serialized.timestamp,
         direction: serialized.direction,
+        selfTransferLeg: serialized.selfTransferLeg,
         symbol: serialized.symbol,
         raw: BigInt(serialized.raw),
         decimals: serialized.decimals,

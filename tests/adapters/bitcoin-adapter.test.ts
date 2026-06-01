@@ -230,6 +230,7 @@ describe('BitcoinAdapter', () => {
         txid: selfTx.txid,
         timestamp: 1700000200,
         direction: 'self',
+        selfTransferLeg: 'out',
         symbol: 'BTC',
         raw: 1000n,
         decimals: 8,

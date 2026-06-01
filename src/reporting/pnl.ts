@@ -6,6 +6,7 @@ import {
   type UtcDateString,
   toUtcDateString,
 } from '../domain/historical-price.js';
+import type { SelfTransferLeg } from '../core/self-transfer.js';
 import type { Tx } from '../domain/types.js';
 
 export interface PnlEvent {
@@ -13,6 +14,7 @@ export interface PnlEvent {
   chain: Chain;
   symbol: AssetSymbol;
   direction: 'in' | 'out' | 'self' | 'unknown';
+  selfTransferLeg?: SelfTransferLeg;
   rawAmount: bigint;
   decimals: number;
   date?: UtcDateString;
@@ -273,6 +275,7 @@ export function txToPnlEvents(txs: readonly Tx[], accountId: string): PnlEvent[]
       chain: tx.chain,
       symbol: tx.symbol,
       direction: tx.direction,
+      selfTransferLeg: tx.selfTransferLeg,
       rawAmount: tx.raw,
       decimals: tx.decimals,
       date: tx.timestamp === undefined ? undefined : toUtcDateString(tx.timestamp * 1000),
@@ -296,9 +299,35 @@ function groupSelfTransfers(events: IndexedEvent[]): Map<string, IndexedEvent[]>
 }
 
 function selfTransferKey(event: PnlEvent): string {
-  // Self-transfer pairing currently assumes equal raw amounts on both account
-  // legs. Fee-reduced legs fall through to unpaired_self_transfer (#111).
-  return `${event.txid}:${event.chain}:${event.symbol}:${event.rawAmount}`;
+  return `${event.txid}:${event.chain}:${event.symbol}`;
+}
+
+function resolveSelfTransferEnds(
+  group: readonly IndexedEvent[],
+  ledgers: Map<string, LedgerBucket>,
+): { source?: IndexedEvent; destination?: IndexedEvent; ambiguous?: boolean } {
+  const outLegs = group.filter((event) => event.selfTransferLeg === 'out');
+  const inLegs = group.filter((event) => event.selfTransferLeg === 'in');
+  if (outLegs.length === 1 && inLegs.length === 1 && outLegs[0].accountId !== inLegs[0].accountId) {
+    return { source: outLegs[0], destination: inLegs[0] };
+  }
+  if (outLegs.length > 0 || inLegs.length > 0) {
+    return { ambiguous: true };
+  }
+
+  const candidates = group
+    .map((event) => ({ event, bucket: bucketFor(ledgers, event) }))
+    .filter(({ event, bucket }) => totalRaw(bucket.lots) >= event.rawAmount);
+  if (candidates.length !== 1) {
+    return {};
+  }
+
+  const source = candidates[0];
+  const destination = group.find((event) => event.accountId !== source.event.accountId);
+  if (destination === undefined) {
+    return {};
+  }
+  return { source: source.event, destination };
 }
 
 function moveSelfTransfer(
@@ -313,39 +342,36 @@ function moveSelfTransfer(
     return;
   }
 
-  if (group.some((event) => excludedLedgerKeys.has(ledgerKey(event)))) {
-    warnings.push(`unpaired_self_transfer:${group[0].txid}: source or destination ledger has excluded events`);
+  const ends = resolveSelfTransferEnds(group, ledgers);
+  if (ends.ambiguous === true) {
+    warnings.push(`unpaired_self_transfer:${group[0].txid}: ambiguous self-transfer legs`);
+    return;
+  }
+  if (ends.source === undefined || ends.destination === undefined) {
+    warnings.push(`unpaired_self_transfer:${group[0].txid}: could not identify source and destination accounts`);
     return;
   }
 
-  const candidates = group
-    .map((event) => ({ event, bucket: bucketFor(ledgers, event) }))
-    .filter(({ event, bucket }) => totalRaw(bucket.lots) >= event.rawAmount);
-  if (candidates.length !== 1) {
-    warnings.push(`unpaired_self_transfer:${group[0].txid}: could not identify one funded source account`);
+  if (excludedLedgerKeys.has(ledgerKey(ends.source))) {
+    warnings.push(`unpaired_self_transfer:${ends.source.txid}: source ledger has excluded events`);
     return;
   }
 
-  const source = candidates[0];
-  const destination = group.find((event) => event.accountId !== source.event.accountId);
-  if (destination === undefined) {
-    warnings.push(`unpaired_self_transfer:${group[0].txid}: destination account not found`);
+  const sourceBucket = bucketFor(ledgers, ends.source);
+  const selected = strategy.selectLots(sourceBucket.lots, ends.source.rawAmount);
+  if (totalRaw(selected) < ends.source.rawAmount) {
+    warnings.push(`unpaired_self_transfer:${ends.source.txid}: insufficient source lots to move`);
     return;
   }
 
-  const selected = strategy.selectLots(source.bucket.lots, source.event.rawAmount);
-  if (totalRaw(selected) < source.event.rawAmount) {
-    warnings.push(`unpaired_self_transfer:${source.event.txid}: insufficient source lots to move`);
-    return;
-  }
-
-  const moved = consumeLots(source.bucket.lots, selected, source.event.rawAmount).movedLots;
+  const moved = consumeLots(sourceBucket.lots, selected, ends.source.rawAmount).movedLots;
+  const destination = ends.destination;
   const destinationBucket = bucketFor(ledgers, destination);
   destinationBucket.lots.push(
     ...moved.map((lot) => ({
       ...lot,
-      lotId: `${lot.lotId}->${destination.accountId}:${destination.txid}`,
-      accountId: destination.accountId,
+      lotId: `${lot.lotId}->${destinationBucket.accountId}:${destination.txid}`,
+      accountId: destinationBucket.accountId,
     })),
   );
 }

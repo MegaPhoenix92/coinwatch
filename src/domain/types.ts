@@ -1,3 +1,4 @@
+import type { SelfTransferLeg } from '../core/self-transfer.js';
 import type { AssetSymbol } from './assets.js';
 import type { Chain } from './chains.js';
 
@@ -14,6 +15,8 @@ export interface Tx {
   txid: string;
   timestamp?: number;
   direction: 'in' | 'out' | 'self' | 'unknown';
+  /** When direction is `self`, marks the source (out) or destination (in) leg for cross-account moves. */
+  selfTransferLeg?: SelfTransferLeg;
   symbol: AssetSymbol;
   raw: bigint;
   decimals: number;
