@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Watch-only multi-chain crypto CLI. Holds no private keys, never signs.",
+  "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
@@ -16,7 +17,8 @@
     "config/accounts.example.json",
     "CHANGELOG.md",
     "RELEASING.md",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"

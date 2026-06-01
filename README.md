@@ -219,4 +219,5 @@ Claude Agent SDK + MCP tools.
 
 ## License
 
-TBD.
+[MIT](LICENSE) — decision #46. This license applies to coinwatch source in this repo.
+Bundled dependencies (including `@anthropic-ai/claude-agent-sdk`) remain under their own terms.

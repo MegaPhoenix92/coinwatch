@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- MIT `LICENSE` and SPDX `license` field (decision #46). Applies from this commit forward; v0.1.0 tarball predates the license file.
+
 ## [0.1.0] - 2026-06-01
 
 First public release. Watch-only multi-chain CLI with Claude Agent SDK MCP tools — **never holds private keys or signs.**
