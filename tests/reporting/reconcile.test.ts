@@ -168,6 +168,80 @@ describe('loadReconRecords', () => {
     });
   });
 
+  it('parses a quoted field with an embedded newline as a single record_id value', () => {
+    const file = tempFile(
+      'embedded-newline.csv',
+      [
+        'record_id,source,kind,account_id,chain,symbol,date,txid,quantity,proceeds_usd,basis_usd,gain_usd',
+        '"line1',
+        'line2",external,realized_disposal,acct-1,bitcoin,BTC,2026-03-01,tx-1,1,30000,10000,20000',
+      ].join('\n'),
+    );
+
+    const loaded = loadReconRecords(file);
+
+    expect(loaded.invalidExternalRows).toEqual([]);
+    expect(loaded.records).toHaveLength(1);
+    expect(loaded.records[0].recordId).toBe('line1\nline2');
+  });
+
+  it('parses CRLF-terminated CSV and suppresses carriage returns outside quoted fields', () => {
+    const file = tempFile(
+      'crlf.csv',
+      [
+        'record_id,source,kind,account_id,chain,symbol,date,txid,quantity,proceeds_usd,basis_usd,gain_usd',
+        'crlf-row,external,realized_disposal,acct-1,bitcoin,BTC,2026-03-01,tx-crlf,1,30000,10000,20000',
+      ].join('\r\n'),
+    );
+
+    const loaded = loadReconRecords(file);
+
+    expect(loaded.invalidExternalRows).toEqual([]);
+    expect(loaded.records).toHaveLength(1);
+    expect(loaded.records[0]).toMatchObject({
+      recordId: 'crlf-row',
+      txid: 'tx-crlf',
+      proceedsUsd: 30_000,
+    });
+  });
+
+  it('returns invalid_external_row for CSV rows with non-numeric quantity without throwing', () => {
+    const file = tempFile(
+      'bad-quantity.csv',
+      [
+        'record_id,source,kind,account_id,chain,symbol,date,txid,quantity,proceeds_usd,basis_usd,gain_usd',
+        'good,external,realized_disposal,acct-1,bitcoin,BTC,2026-03-01,tx-good,1,30000,10000,20000',
+        'bad-qty,external,realized_disposal,acct-1,bitcoin,BTC,2026-03-01,tx-bad,not-a-number,30000,10000,20000',
+      ].join('\n'),
+    );
+
+    const loaded = loadReconRecords(file);
+
+    expect(loaded.records).toHaveLength(1);
+    expect(loaded.records[0].txid).toBe('tx-good');
+    expect(loaded.invalidExternalRows).toHaveLength(1);
+    expect(loaded.invalidExternalRows[0].reason).toMatch(/quantity/i);
+    expect(loaded.invalidExternalRows[0].raw).toMatchObject({ txid: 'tx-bad' });
+  });
+
+  it('returns invalid_external_row for CSV rows with an unclosed leading quote without throwing', () => {
+    const file = tempFile(
+      'unclosed-quote.csv',
+      [
+        'record_id,source,kind,account_id,chain,symbol,date,txid,quantity,proceeds_usd,basis_usd,gain_usd',
+        'good,external,realized_disposal,acct-1,bitcoin,BTC,2026-03-01,tx-good,1,30000,10000,20000',
+        '"stray-open,external,realized_disposal,acct-1,bitcoin,BTC,2026-03-01,tx-bad,1,30000,10000,20000',
+      ].join('\n'),
+    );
+
+    const loaded = loadReconRecords(file);
+
+    expect(loaded.records).toHaveLength(1);
+    expect(loaded.invalidExternalRows).toHaveLength(1);
+    expect(loaded.invalidExternalRows[0].reason.length).toBeGreaterThan(0);
+    expect(loaded.invalidExternalRows[0].raw).toBeDefined();
+  });
+
   it('returns invalid_external_row entries for malformed rows without dropping valid rows', () => {
     const file = tempFile(
       'mixed.json',
