@@ -11,6 +11,11 @@ Arbitrum / Optimism), and Solana** — native assets plus stablecoins (USDC / US
 values them in USD, lists and derives receive addresses, and shows transaction history,
 exposed as MCP tools to an interactive agent.
 
+**Bridged stables (decision #47):** On Arbitrum, Optimism, and Polygon, legacy bridged USDC
+(`USDC.e`) and Optimism `USDT0` are tracked as **separate symbols** from native `USDC` / `USDT`
+(one contract per symbol). Balances and PnL do not aggregate across variants. Other bridged
+wrappers (e.g. Base USDbC) are out of scope until explicitly added to the registry.
+
 ## Defining property: no keys, ever
 
 The application **holds no private keys and never signs anything.** Custody lives entirely on

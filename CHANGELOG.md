@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - MIT `LICENSE` and SPDX `license` field (decision #46). Applies from this commit forward; v0.1.0 tarball predates the license file.
+- Bridged stablecoin registry rows (decision #47): `USDC.e` on Arbitrum / Optimism / Polygon; `USDT0` on Optimism — separate symbols from native `USDC` / `USDT`.
 
 ## [0.1.0] - 2026-06-01
 
