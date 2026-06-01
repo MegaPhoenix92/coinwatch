@@ -119,4 +119,42 @@ describe('Store', () => {
     expect(store.getHistoricalPrice('ethereum', date)).toBeUndefined();
     store.close();
   });
+
+  it('round-trips tx category overrides by chain, txid, and symbol', () => {
+    const store = new Store(new Database(':memory:'));
+    store.setTxCategoryOverride({
+      chain: 'ethereum',
+      txid: '0xabc',
+      symbol: 'ETH',
+      category: 'income',
+      note: 'airdrop',
+    });
+    const overrides = store.getTxCategoryOverrides();
+    expect(overrides.size).toBe(1);
+    const row = [...overrides.values()][0];
+    expect(row.category).toBe('income');
+    expect(row.note).toBe('airdrop');
+
+    store.clearTxCategoryOverride('ethereum', '0xabc', 'ETH');
+    expect(store.getTxCategoryOverrides().size).toBe(0);
+    store.close();
+  });
+
+  it('keys overrides separately per symbol on the same txid', () => {
+    const store = new Store(new Database(':memory:'));
+    store.setTxCategoryOverride({
+      chain: 'ethereum',
+      txid: '0xmulti',
+      symbol: 'ETH',
+      category: 'swap',
+    });
+    store.setTxCategoryOverride({
+      chain: 'ethereum',
+      txid: '0xmulti',
+      symbol: 'USDC',
+      category: 'swap',
+    });
+    expect(store.getTxCategoryOverrides().size).toBe(2);
+    store.close();
+  });
 });
