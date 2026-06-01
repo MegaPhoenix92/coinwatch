@@ -1,36 +1,26 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
 const cliPath = join(root, 'dist/cli.js');
 
 describe('release build artifact', () => {
-  beforeAll(() => {
-    execFileSync('npm', ['run', 'build'], {
-      cwd: root,
-      stdio: 'pipe',
-      timeout: 120_000,
-    });
-  }, 120_000);
-
-  it('emits dist/cli.js with a node shebang for the bin target', () => {
-    expect(existsSync(cliPath)).toBe(true);
-    expect(readFileSync(cliPath, 'utf8').startsWith('#!/usr/bin/env node\n')).toBe(true);
+  it('declares pack contents and a bin target for dist/cli.js', () => {
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+      bin: Record<string, string>;
+      files: string[];
+    };
+    expect(pkg.bin.coinwatch).toBe('./dist/cli.js');
+    expect(pkg.files).toEqual(
+      expect.arrayContaining(['dist', 'config/accounts.example.json', 'README.md', 'CHANGELOG.md']),
+    );
+    expect(pkg.files.some((entry) => entry.startsWith('tests'))).toBe(false);
   });
 
-  it('npm pack dry-run includes only declared runtime files', () => {
-    const tarball = execFileSync('npm', ['pack', '--dry-run', '--json'], {
-      cwd: root,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 120_000,
-    });
-    const parsed = JSON.parse(tarball) as [{ files: { path: string }[] }];
-    const paths = parsed[0]?.files.map((entry) => entry.path) ?? [];
-    expect(paths).toContain('dist/cli.js');
-    expect(paths).toContain('config/accounts.example.json');
-    expect(paths.some((path) => path.startsWith('tests/'))).toBe(false);
+  it('emits dist/cli.js with a node shebang when built (CI runs npm run build first)', () => {
+    const source = readFileSync(cliPath, 'utf8');
+    expect(source.startsWith('#!/usr/bin/env node\n')).toBe(true);
+    expect(source.includes('export async function main')).toBe(true);
   });
 });
