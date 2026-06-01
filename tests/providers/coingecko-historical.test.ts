@@ -141,7 +141,7 @@ class FakeHistoricalProvider implements HistoricalPriceProvider {
 describe('CachingHistoricalPriceProvider', () => {
   it('returns cached prices without calling the inner provider', async () => {
     const store = new Store(new Database(':memory:'));
-    store.cacheHistoricalPrice({
+    await store.cacheHistoricalPrice({
       coingeckoId: 'bitcoin',
       date: DATE,
       usd: 40_000,
@@ -161,7 +161,7 @@ describe('CachingHistoricalPriceProvider', () => {
       date: DATE,
     });
     expect(inner.calls).toBe(0);
-    store.close();
+    await store.close();
   });
 
   it('writes through on cache miss and serves the second call from cache', async () => {
@@ -185,8 +185,8 @@ describe('CachingHistoricalPriceProvider', () => {
       date: DATE,
     });
     expect(inner.calls).toBe(1);
-    expect(store.getHistoricalPrice('bitcoin', DATE)?.usd).toBe(42_000);
-    store.close();
+    expect((await store.getHistoricalPrice('bitcoin', DATE))?.usd).toBe(42_000);
+    await store.close();
     vi.restoreAllMocks();
   });
 
@@ -199,7 +199,7 @@ describe('CachingHistoricalPriceProvider', () => {
     await expect(provider.getHistoricalUsdPrice('bitcoin', DATE)).rejects.toBe(error);
     await expect(provider.getHistoricalUsdPrice('bitcoin', DATE)).rejects.toBe(error);
     expect(inner.calls).toBe(2);
-    expect(store.getHistoricalPrice('bitcoin', DATE)).toBeUndefined();
-    store.close();
+    expect(await store.getHistoricalPrice('bitcoin', DATE)).toBeUndefined();
+    await store.close();
   });
 });

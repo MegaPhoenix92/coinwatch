@@ -7,7 +7,7 @@ import type { Chain } from '../domain/chains.js';
 import { assertUtcDateString } from '../domain/historical-price.js';
 import { assertTxCategory, txCategorySchema } from '../domain/categories.js';
 import type { Tx } from '../domain/types.js';
-import type { Store } from '../db/store.js';
+import type { CacheStore } from '../db/cache-store.js';
 import { categorizeTransactions, type CategorizedTx } from '../core/tx-category.js';
 import type { HistoricalPriceProvider } from '../adapters/chain-adapter.js';
 import type { OpeningBalancesConfig } from '../config/load.js';
@@ -51,7 +51,7 @@ function selectAccounts(accounts: AccountDescriptor[], ids?: string[]): AccountD
 export function buildHandlers(
   service: PortfolioService,
   accounts: AccountDescriptor[],
-  store?: Store,
+  store?: CacheStore,
   pnlExport?: PnlExportDependencies,
 ) {
   return {
@@ -65,10 +65,12 @@ export function buildHandlers(
       const enriched =
         store === undefined
           ? addresses
-          : addresses.map((addr) => {
-              const label = store.getLabel(addr.chain, addr.address);
-              return label === undefined ? addr : { ...addr, label };
-            });
+          : await Promise.all(
+              addresses.map(async (addr) => {
+                const label = await store.getLabel(addr.chain, addr.address);
+                return label === undefined ? addr : { ...addr, label };
+              }),
+            );
       return asText(JSON.stringify(enriched, null, 2));
     },
 
@@ -87,7 +89,7 @@ export function buildHandlers(
       const txs = mergeHistoryRows(swapDetectionRows, historyOpts);
       const categorized = categorizeTransactions(
         txs,
-        store?.getTxCategoryOverrides(),
+        await store?.getTxCategoryOverrides(),
         swapDetectionRows,
       );
       const safe = categorized.map((tx: CategorizedTx) => ({
@@ -105,10 +107,10 @@ export function buildHandlers(
       note?: string;
     }): Promise<ToolResult> => {
       if (store === undefined) {
-        throw new Error('Category overrides require a local coinwatch.db store.');
+        throw new Error('Category overrides require a configured cache store (DATABASE_URL or local SQLite).');
       }
       const category = assertTxCategory(args.category);
-      store.setTxCategoryOverride({
+      await store.setTxCategoryOverride({
         chain: args.chain,
         txid: args.txid,
         symbol: args.symbol,
@@ -136,9 +138,9 @@ export function buildHandlers(
       symbol: AssetSymbol;
     }): Promise<ToolResult> => {
       if (store === undefined) {
-        throw new Error('Category overrides require a local coinwatch.db store.');
+        throw new Error('Category overrides require a configured cache store (DATABASE_URL or local SQLite).');
       }
-      store.clearTxCategoryOverride(args.chain, args.txid, args.symbol);
+      await store.clearTxCategoryOverride(args.chain, args.txid, args.symbol);
       return asText(
         JSON.stringify(
           { chain: args.chain, txid: args.txid, symbol: args.symbol, cleared: true },
@@ -226,7 +228,7 @@ export function buildHandlers(
 export function buildTools(
   service: PortfolioService,
   accounts: AccountDescriptor[],
-  store?: Store,
+  store?: CacheStore,
   pnlExport?: PnlExportDependencies,
 ) {
   const handlers = buildHandlers(service, accounts, store, pnlExport);

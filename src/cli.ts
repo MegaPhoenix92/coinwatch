@@ -19,7 +19,8 @@ import {
   DEFAULT_ACCOUNTS_PATH,
   DEFAULT_OPENING_BALANCES_PATH,
 } from './config/paths.js';
-import { Store } from './db/store.js';
+import { openStore } from './db/open-store.js';
+import type { CacheStore } from './db/cache-store.js';
 import { allCoingeckoIds } from './domain/assets.js';
 import type { ChainFamily } from './domain/chains.js';
 import { buildServer } from './mcp/server.js';
@@ -220,7 +221,7 @@ export async function main(): Promise<void> {
   );
 
   const prices = new CoinGeckoPriceProvider({ apiKey: env.coingeckoApiKey });
-  const store = Store.open('coinwatch.db');
+  const store: CacheStore = await openStore();
 
   try {
     const historicalPrices = new CachingHistoricalPriceProvider(
@@ -267,7 +268,7 @@ export async function main(): Promise<void> {
       }
     }
   } finally {
-    store.close();
+    await store.close();
   }
 }
 

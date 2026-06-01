@@ -18,7 +18,8 @@ You supply only **public** xpubs / account descriptors / watch addresses.
 
 Phases 1–3 are implemented as a watch-only CLI agent. It reads configured public account
 descriptors, queries provider APIs through adapter seams, exposes nine watch-only MCP tools, and
-stores optional local labels / transaction cache entries in `coinwatch.db`. **Phase 2** builds
+stores optional labels / transaction cache in **Cloud SQL (PostgreSQL)** when `DATABASE_URL` is set,
+or a local SQLite file for dev (`coinwatch.db`). **Phase 2** builds
 unsigned transfer artifacts (BTC/EVM/Solana) with full preflight. **Phase 3** adds historical USD
 prices, per-account FIFO cost-basis/PnL, CSV export, opening-balance lots, reconciliation against
 external bookkeeping exports, and rules-first transaction categorization with manual overrides.
@@ -205,8 +206,9 @@ Claude Agent SDK + MCP tools.
   five `EVM_RPC_*` values when routing every EVM chain to private RPC. CoinGecko has no URL override in
   v1. Tor/proxy and per-account provider isolation are out of scope — run separate processes with
   different configs if you need isolation.
-- `coinwatch.db` is local. It caches labels and public transaction records only; it never stores
-  signing keys.
+- **Production:** set `DATABASE_URL` to your Cloud SQL PostgreSQL instance (use the [Cloud SQL Auth Proxy](https://cloud.google.com/sql/docs/postgres/connect-auth-proxy) locally, e.g. `postgresql://USER:PASSWORD@127.0.0.1:5432/DBNAME`). Set `COINWATCH_ENV=production` to refuse SQLite fallback.
+- **Local dev:** omit `DATABASE_URL` to use SQLite at `COINWATCH_DB_PATH` (default `coinwatch.db`). The cache holds labels and public transaction records only — never signing keys.
+- Do not log `DATABASE_URL` or database credentials.
 - Every receive address returned by the CLI is still unverified until you confirm it on your
   signing device.
 

@@ -5,25 +5,25 @@ import { assertUtcDateString } from '../../src/domain/historical-price.js';
 import type { Tx } from '../../src/domain/types.js';
 
 describe('Store', () => {
-  it('round-trips a label via setLabel/getLabel', () => {
+  it('round-trips a label via setLabel/getLabel', async () => {
     const store = new Store(new Database(':memory:'));
-    expect(store.getLabel('bitcoin', 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu')).toBeUndefined();
-    store.setLabel('bitcoin', 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu', 'cold wallet');
-    expect(store.getLabel('bitcoin', 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu')).toBe(
+    expect(await store.getLabel('bitcoin', 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu')).toBeUndefined();
+    await store.setLabel('bitcoin', 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu', 'cold wallet');
+    expect(await store.getLabel('bitcoin', 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu')).toBe(
       'cold wallet',
     );
-    store.close();
+    await store.close();
   });
 
-  it('upserts a label (replaces existing value)', () => {
+  it('upserts a label (replaces existing value)', async () => {
     const store = new Store(new Database(':memory:'));
-    store.setLabel('ethereum', '0xabc', 'old');
-    store.setLabel('ethereum', '0xabc', 'new');
-    expect(store.getLabel('ethereum', '0xabc')).toBe('new');
-    store.close();
+    await store.setLabel('ethereum', '0xabc', 'old');
+    await store.setLabel('ethereum', '0xabc', 'new');
+    expect(await store.getLabel('ethereum', '0xabc')).toBe('new');
+    await store.close();
   });
 
-  it('caches txs and returns them with raw as bigint', () => {
+  it('caches txs and returns them with raw as bigint', async () => {
     const store = new Store(new Database(':memory:'));
     const txs: Tx[] = [
       {
@@ -38,8 +38,8 @@ describe('Store', () => {
         confirmed: true,
       },
     ];
-    store.cacheTxs(txs);
-    const got = store.getCachedTxs('bitcoin');
+    await store.cacheTxs(txs);
+    const got = await store.getCachedTxs('bitcoin');
     expect(got).toHaveLength(1);
     expect(got[0].txid).toBe('aabbcc');
     expect(got[0].raw).toBe(12345678901234567890n);
@@ -47,10 +47,10 @@ describe('Store', () => {
     expect(got[0].chain).toBe('bitcoin');
     expect(got[0].symbol).toBe('BTC');
     expect(got[0].confirmed).toBe(true);
-    store.close();
+    await store.close();
   });
 
-  it('upserts cached txs on duplicate (chain,txid)', () => {
+  it('upserts cached txs on duplicate (chain,txid)', async () => {
     const store = new Store(new Database(':memory:'));
     const base: Tx = {
       chain: 'bitcoin',
@@ -61,18 +61,18 @@ describe('Store', () => {
       decimals: 8,
       confirmed: false,
     };
-    store.cacheTxs([base]);
-    store.cacheTxs([{ ...base, raw: 200n, confirmed: true }]);
-    const got = store.getCachedTxs('bitcoin');
+    await store.cacheTxs([base]);
+    await store.cacheTxs([{ ...base, raw: 200n, confirmed: true }]);
+    const got = await store.getCachedTxs('bitcoin');
     expect(got).toHaveLength(1);
     expect(got[0].raw).toBe(200n);
     expect(got[0].confirmed).toBe(true);
-    store.close();
+    await store.close();
   });
 
-  it('filters cached txs by chain', () => {
+  it('filters cached txs by chain', async () => {
     const store = new Store(new Database(':memory:'));
-    store.cacheTxs([
+    await store.cacheTxs([
       {
         chain: 'bitcoin',
         txid: 'b1',
@@ -92,18 +92,18 @@ describe('Store', () => {
         confirmed: true,
       },
     ]);
-    expect(store.getCachedTxs('bitcoin')).toHaveLength(1);
-    expect(store.getCachedTxs('ethereum')).toHaveLength(1);
-    expect(store.getCachedTxs('bitcoin')[0].txid).toBe('b1');
-    store.close();
+    expect(await store.getCachedTxs('bitcoin')).toHaveLength(1);
+    expect(await store.getCachedTxs('ethereum')).toHaveLength(1);
+    expect((await store.getCachedTxs('bitcoin'))[0].txid).toBe('b1');
+    await store.close();
   });
 
-  it('round-trips cached historical prices by coingecko id and UTC date', () => {
+  it('round-trips cached historical prices by coingecko id and UTC date', async () => {
     const store = new Store(new Database(':memory:'));
     const date = assertUtcDateString('2026-01-01');
 
-    expect(store.getHistoricalPrice('bitcoin', date)).toBeUndefined();
-    store.cacheHistoricalPrice({
+    expect(await store.getHistoricalPrice('bitcoin', date)).toBeUndefined();
+    await store.cacheHistoricalPrice({
       coingeckoId: 'bitcoin',
       date,
       usd: 43_000.25,
@@ -111,50 +111,50 @@ describe('Store', () => {
       fetchedAt: 1_700_000_000_000,
     });
 
-    expect(store.getHistoricalPrice('bitcoin', date)).toEqual({
+    expect(await store.getHistoricalPrice('bitcoin', date)).toEqual({
       usd: 43_000.25,
       source: 'coingecko',
       date,
     });
-    expect(store.getHistoricalPrice('ethereum', date)).toBeUndefined();
-    store.close();
+    expect(await store.getHistoricalPrice('ethereum', date)).toBeUndefined();
+    await store.close();
   });
 
-  it('round-trips tx category overrides by chain, txid, and symbol', () => {
+  it('round-trips tx category overrides by chain, txid, and symbol', async () => {
     const store = new Store(new Database(':memory:'));
-    store.setTxCategoryOverride({
+    await store.setTxCategoryOverride({
       chain: 'ethereum',
       txid: '0xabc',
       symbol: 'ETH',
       category: 'income',
       note: 'airdrop',
     });
-    const overrides = store.getTxCategoryOverrides();
+    const overrides = await store.getTxCategoryOverrides();
     expect(overrides.size).toBe(1);
     const row = [...overrides.values()][0];
     expect(row.category).toBe('income');
     expect(row.note).toBe('airdrop');
 
-    store.clearTxCategoryOverride('ethereum', '0xabc', 'ETH');
-    expect(store.getTxCategoryOverrides().size).toBe(0);
-    store.close();
+    await store.clearTxCategoryOverride('ethereum', '0xabc', 'ETH');
+    expect((await store.getTxCategoryOverrides()).size).toBe(0);
+    await store.close();
   });
 
-  it('keys overrides separately per symbol on the same txid', () => {
+  it('keys overrides separately per symbol on the same txid', async () => {
     const store = new Store(new Database(':memory:'));
-    store.setTxCategoryOverride({
+    await store.setTxCategoryOverride({
       chain: 'ethereum',
       txid: '0xmulti',
       symbol: 'ETH',
       category: 'swap',
     });
-    store.setTxCategoryOverride({
+    await store.setTxCategoryOverride({
       chain: 'ethereum',
       txid: '0xmulti',
       symbol: 'USDC',
       category: 'swap',
     });
-    expect(store.getTxCategoryOverrides().size).toBe(2);
-    store.close();
+    expect((await store.getTxCategoryOverrides()).size).toBe(2);
+    await store.close();
   });
 });

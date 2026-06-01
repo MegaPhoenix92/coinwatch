@@ -143,7 +143,7 @@ describe('multi-chain prepare_transfer e2e and Phase-2 DoD guards', () => {
   let store: Store | undefined;
   const filesToRemove = new Set<string>();
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks();
     for (const file of filesToRemove) {
       if (existsSync(file)) {
@@ -151,7 +151,7 @@ describe('multi-chain prepare_transfer e2e and Phase-2 DoD guards', () => {
       }
     }
     filesToRemove.clear();
-    store?.close();
+    await store?.close();
     store = undefined;
   });
 
