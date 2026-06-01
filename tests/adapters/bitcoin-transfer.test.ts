@@ -40,7 +40,7 @@ const fake: BtcDataProvider = {
   },
 };
 
-function trackingBtcProvider(): BtcDataProvider & {
+function trackingBtcProvider(utxoValue = 200_000): BtcDataProvider & {
   calls: { getAddress: number; getAddressTxs: number; getUtxos: number };
 } {
   const calls = { getAddress: 0, getAddressTxs: 0, getUtxos: 0 };
@@ -56,7 +56,7 @@ function trackingBtcProvider(): BtcDataProvider & {
     },
     async getUtxos(): Promise<BtcUtxo[]> {
       calls.getUtxos += 1;
-      return [{ txid: INPUT_TXID, vout: 0, value: 200_000 }];
+      return [{ txid: INPUT_TXID, vout: 0, value: utxoValue }];
     },
   };
 }
@@ -124,6 +124,23 @@ describe('BitcoinAdapter.buildUnsignedTransfer', () => {
         feeRate: 2n,
       }),
     ).rejects.toThrow(/native-SegWit|P2WPKH/i);
+  });
+
+  it('rejects too-small UTXO sets with the existing insufficient-funds error', async () => {
+    const provider = trackingBtcProvider(50_001);
+    const adapter = new BitcoinAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'bitcoin',
+        to: RECIPIENT,
+        asset: 'BTC',
+        rawAmount: 50_000n,
+        feeRate: 2n,
+      }),
+    ).rejects.toThrow('Insufficient funds (incl. fee) for this bitcoin transfer.');
+    expect(provider.calls.getUtxos).toBe(1);
   });
 
   it('rejects invalid recipients before reading provider data', async () => {

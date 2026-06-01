@@ -25,10 +25,19 @@ const account = {
 
 class FakeEvmProvider implements EvmDataProvider {
   readonly gasRequests: EvmGasEstimateRequest[] = [];
-  readonly calls = { getTransactionCount: 0, estimateGas: 0, getFeesPerGas: 0, getChainId: 0 };
+  readonly calls = {
+    getNativeBalance: 0,
+    getTransactionCount: 0,
+    estimateGas: 0,
+    getFeesPerGas: 0,
+    getChainId: 0,
+  };
+
+  constructor(private readonly nativeBalance = 10_000_000_000_000_000_000n) {}
 
   async getNativeBalance(): Promise<bigint> {
-    return 0n;
+    this.calls.getNativeBalance += 1;
+    return this.nativeBalance;
   }
 
   async getTokenBalances(): Promise<EvmTokenBalance[]> {
@@ -101,6 +110,7 @@ describe('EvmAdapter.buildUnsignedTransfer', () => {
     expect(artifact.summary.artifactHash).toBe(
       hex.encode(sha256(new TextEncoder().encode(artifact.payload))),
     );
+    expect(provider.calls.getNativeBalance).toBe(1);
   });
 
   it('builds an unsigned EIP-1559 ERC-20 transfer transaction', async () => {
@@ -139,6 +149,7 @@ describe('EvmAdapter.buildUnsignedTransfer', () => {
       decimals: 6,
       feeAsset: 'ETH',
     });
+    expect(provider.calls.getNativeBalance).toBe(1);
   });
 
   it('treats the feeRate override as gwei and converts it to wei', async () => {
@@ -161,6 +172,41 @@ describe('EvmAdapter.buildUnsignedTransfer', () => {
     // rawFee = gas (21_000 native) * maxFeePerGas (30 gwei in wei).
     expect(artifact.summary.rawFee).toBe((21_000n * 30_000_000_000n).toString());
     expectUnsigned(parsed);
+    expect(provider.calls.getNativeBalance).toBe(1);
+  });
+
+  it('rejects native ETH transfers when balance cannot cover amount + network fee', async () => {
+    const provider = new FakeEvmProvider(1_000n);
+    const adapter = new EvmAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'ethereum',
+        to: TO,
+        asset: 'ETH',
+        rawAmount: 1_000_000_000_000_000n,
+      }),
+    ).rejects.toThrow(/Insufficient ETH balance for amount \+ network fee/);
+    expect(provider.calls.getNativeBalance).toBe(1);
+    expect(provider.calls.getChainId).toBe(0);
+  });
+
+  it('rejects ERC-20 transfers when native balance cannot cover the network fee', async () => {
+    const provider = new FakeEvmProvider(1_000n);
+    const adapter = new EvmAdapter(provider);
+
+    await expect(
+      adapter.buildUnsignedTransfer({
+        account,
+        chain: 'ethereum',
+        to: TO,
+        asset: 'USDC',
+        rawAmount: 25_000_000n,
+      }),
+    ).rejects.toThrow(/Insufficient ETH balance for amount \+ network fee/);
+    expect(provider.calls.getNativeBalance).toBe(1);
+    expect(provider.calls.getChainId).toBe(0);
   });
 
   it('rejects invalid recipients before reading provider data', async () => {
@@ -177,6 +223,7 @@ describe('EvmAdapter.buildUnsignedTransfer', () => {
       }),
     ).rejects.toThrow(/Invalid ethereum recipient address/);
     expect(provider.calls).toEqual({
+      getNativeBalance: 0,
       getTransactionCount: 0,
       estimateGas: 0,
       getFeesPerGas: 0,
@@ -208,6 +255,7 @@ describe('EvmAdapter.buildUnsignedTransfer', () => {
       }),
     ).rejects.toThrow(/Asset POL is not available on ethereum/);
     expect(provider.calls).toEqual({
+      getNativeBalance: 0,
       getTransactionCount: 0,
       estimateGas: 0,
       getFeesPerGas: 0,

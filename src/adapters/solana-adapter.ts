@@ -48,6 +48,7 @@ import {
 const RECEIVE_NOTE =
   'Solana addresses are reusable - verify on your signing device before use.';
 const SOLANA_PROGRAMS = [SOL_TOKEN_PROGRAM, SOL_TOKEN_2022_PROGRAM] as const;
+const SOL_TRANSFER_FEE_LAMPORTS = 5000n;
 
 function pubkeysOf(account: AccountDescriptor): string[] {
   return account.source.kind === 'addresses' ? account.source.addresses : [];
@@ -441,6 +442,14 @@ export class SolanaAdapter implements ChainAdapter {
             destinationOwner: params.to,
             rawAmount: params.rawAmount,
           });
+    const rawFee = SOL_TRANSFER_FEE_LAMPORTS;
+    const requiredLamports = (params.asset === native.symbol ? params.rawAmount : 0n) + rawFee;
+    const lamports = await this.provider.getLamports(from);
+    if (lamports < requiredLamports) {
+      throw new Error(
+        `Insufficient SOL balance for amount + network fee: required ${requiredLamports} lamports, available ${lamports}.`,
+      );
+    }
 
     const message = pipe(
       createTransactionMessage({ version: 0 }),
@@ -468,7 +477,7 @@ export class SolanaAdapter implements ChainAdapter {
         rawAmount: params.rawAmount.toString(),
         decimals: asset.decimals,
         fee: '0.000005',
-        rawFee: '5000',
+        rawFee: rawFee.toString(),
         feeAsset: 'SOL',
         artifactHash: hex.encode(sha256(messageBytes)),
       },

@@ -332,6 +332,14 @@ export class EvmAdapter implements ChainAdapter {
       value,
       data,
     });
+    const rawFee = gas * fees.maxFeePerGas;
+    const requiredNative = (params.asset === native.symbol ? params.rawAmount : 0n) + rawFee;
+    const nativeBalance = await this.provider.getNativeBalance(params.chain, lowerFrom);
+    if (nativeBalance < requiredNative) {
+      throw new Error(
+        `Insufficient ${native.symbol} balance for amount + network fee: required ${requiredNative}, available ${nativeBalance}.`,
+      );
+    }
     const chainId = this.provider.getChainId(params.chain);
     const serialized = serializeTransaction({
       type: 'eip1559',
@@ -344,7 +352,6 @@ export class EvmAdapter implements ChainAdapter {
       maxFeePerGas: fees.maxFeePerGas,
       maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
     });
-    const rawFee = gas * fees.maxFeePerGas;
 
     return {
       kind: 'evm-eip1559',

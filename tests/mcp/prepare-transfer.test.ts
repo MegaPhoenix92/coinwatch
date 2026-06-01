@@ -76,7 +76,7 @@ const fakeBtcProvider: BtcDataProvider = {
 
 const fakeEvmProvider: EvmDataProvider = {
   async getNativeBalance(): Promise<bigint> {
-    return 0n;
+    return 10_000_000_000_000_000_000n;
   },
   async getTokenBalances(): Promise<EvmTokenBalance[]> {
     return [];
@@ -100,7 +100,7 @@ const fakeEvmProvider: EvmDataProvider = {
 
 const fakeSolProvider: SolDataProvider = {
   async getLamports(): Promise<bigint> {
-    return 0n;
+    return 10_000_000n;
   },
   async getTokenAccounts(): Promise<SolTokenAccount[]> {
     return [];

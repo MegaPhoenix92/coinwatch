@@ -77,7 +77,7 @@ const fakeBtcProvider: BtcDataProvider = {
 
 const fakeEvmProvider: EvmDataProvider = {
   async getNativeBalance() {
-    return 0n;
+    return 10_000_000_000_000_000_000n;
   },
   async getTokenBalances() {
     return [];
@@ -101,7 +101,7 @@ const fakeEvmProvider: EvmDataProvider = {
 
 const fakeSolProvider: SolDataProvider = {
   async getLamports() {
-    return 0n;
+    return 10_000_000n;
   },
   async getTokenAccounts() {
     return [];
