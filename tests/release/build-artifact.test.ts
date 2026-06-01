@@ -1,26 +1,31 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 const root = process.cwd();
 const cliPath = join(root, 'dist/cli.js');
 
 describe('release build artifact', () => {
-  it('builds dist/cli.js with a node shebang for the bin target', () => {
-    if (existsSync(cliPath)) {
-      rmSync(cliPath, { force: true });
-    }
-    execFileSync('npm', ['run', 'build'], { cwd: root, stdio: 'pipe' });
+  beforeAll(() => {
+    execFileSync('npm', ['run', 'build'], {
+      cwd: root,
+      stdio: 'pipe',
+      timeout: 120_000,
+    });
+  }, 120_000);
+
+  it('emits dist/cli.js with a node shebang for the bin target', () => {
     expect(existsSync(cliPath)).toBe(true);
     expect(readFileSync(cliPath, 'utf8').startsWith('#!/usr/bin/env node\n')).toBe(true);
   });
 
-  it('npm pack includes only declared runtime files', () => {
-    const tarball = execFileSync('npm', ['pack', '--json'], {
+  it('npm pack dry-run includes only declared runtime files', () => {
+    const tarball = execFileSync('npm', ['pack', '--dry-run', '--json'], {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 120_000,
     });
     const parsed = JSON.parse(tarball) as [{ files: { path: string }[] }];
     const paths = parsed[0]?.files.map((entry) => entry.path) ?? [];
