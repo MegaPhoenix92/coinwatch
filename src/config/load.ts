@@ -41,6 +41,7 @@ const xpubSourceSchema = z.object({
   xpub: z.string().min(1),
   scriptType: btcScriptTypeSchema,
   gapLimit: z.number().int().positive().optional(),
+  maxGapScan: z.number().int().positive().optional(),
 });
 
 const addressesSourceSchema = z.object({

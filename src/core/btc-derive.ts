@@ -45,29 +45,36 @@ function addressFor(scriptType: BtcScriptType, pubkey: Uint8Array): string {
   }
 }
 
+export function deriveAddressAt(
+  accountXpub: string,
+  scriptType: BtcScriptType,
+  index: number,
+  change: 0 | 1 = 0,
+): { address: string; path: string } {
+  const acct = HDKey.fromExtendedKey(normalizeToXpub(accountXpub));
+  const branch = acct.deriveChild(change);
+  const purpose = purposeFor(scriptType);
+  const child = branch.deriveChild(index);
+  const pubkey = child.publicKey;
+  if (pubkey === null) {
+    throw new Error(`No public key at ${purpose} change=${change} index=${index}`);
+  }
+
+  return {
+    address: addressFor(scriptType, pubkey),
+    path: `m/${purpose}/0'/0'/${change}/${index}`,
+  };
+}
+
 export function deriveAddresses(
   accountXpub: string,
   scriptType: BtcScriptType,
   count: number,
   change: 0 | 1 = 0,
 ): { address: string; path: string }[] {
-  const acct = HDKey.fromExtendedKey(normalizeToXpub(accountXpub));
-  const branch = acct.deriveChild(change);
-  const purpose = purposeFor(scriptType);
   const out: { address: string; path: string }[] = [];
-
   for (let i = 0; i < count; i += 1) {
-    const child = branch.deriveChild(i);
-    const pubkey = child.publicKey;
-    if (pubkey === null) {
-      throw new Error(`No public key at ${purpose} change=${change} index=${i}`);
-    }
-
-    out.push({
-      address: addressFor(scriptType, pubkey),
-      path: `m/${purpose}/0'/0'/${change}/${i}`,
-    });
+    out.push(deriveAddressAt(accountXpub, scriptType, i, change));
   }
-
   return out;
 }
