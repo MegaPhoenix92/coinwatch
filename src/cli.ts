@@ -9,9 +9,15 @@ import { EvmAdapter } from './adapters/evm-adapter.js';
 import { SolanaAdapter } from './adapters/solana-adapter.js';
 import { loadAccounts, loadEnv } from './config/load.js';
 import { Store } from './db/store.js';
+import { allCoingeckoIds } from './domain/assets.js';
 import type { ChainFamily } from './domain/chains.js';
 import { buildServer } from './mcp/server.js';
+import { buildHandlers } from './mcp/tools.js';
 import { CoinGeckoPriceProvider } from './providers/coingecko.js';
+import {
+  CachingHistoricalPriceProvider,
+  CoinGeckoHistoricalPriceProvider,
+} from './providers/coingecko-historical.js';
 import { MempoolProvider } from './providers/mempool.js';
 import { createSolanaKitProvider } from './providers/solana-kit.js';
 import { ViemProvider } from './providers/viem.js';
@@ -29,6 +35,13 @@ export const SYSTEM_PROMPT = [
 type McpServers = NonNullable<Options['mcpServers']>;
 type CoinwatchServer = McpServers[string];
 
+interface ExportPnlCommand {
+  accountIds?: string[];
+  from?: string;
+  to?: string;
+  limit?: number;
+}
+
 export function buildQueryOptions(server: CoinwatchServer): Options {
   return {
     model: 'claude-opus-4-8',
@@ -39,6 +52,42 @@ export function buildQueryOptions(server: CoinwatchServer): Options {
     settingSources: [],
     permissionMode: 'default',
   };
+}
+
+export function parseExportPnlCommand(argv: readonly string[]): ExportPnlCommand | undefined {
+  if (argv[0] !== 'export-pnl') {
+    return undefined;
+  }
+
+  const command: ExportPnlCommand = {};
+  const accountIds: string[] = [];
+  for (let i = 1; i < argv.length; i += 1) {
+    const arg = argv[i];
+    const next = argv[i + 1];
+    if ((arg === '--account' || arg === '--account-id') && next !== undefined) {
+      accountIds.push(next);
+      i += 1;
+    } else if (arg === '--from' && next !== undefined) {
+      command.from = next;
+      i += 1;
+    } else if (arg === '--to' && next !== undefined) {
+      command.to = next;
+      i += 1;
+    } else if (arg === '--limit' && next !== undefined) {
+      const parsed = Number(next);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw new Error(`Invalid --limit "${next}": expected a positive integer.`);
+      }
+      command.limit = parsed;
+      i += 1;
+    } else {
+      throw new Error(`Unknown export-pnl argument: ${arg}`);
+    }
+  }
+  if (accountIds.length > 0) {
+    command.accountIds = accountIds;
+  }
+  return command;
 }
 
 export async function* userMessages(): AsyncGenerator<SDKUserMessage> {
@@ -81,12 +130,29 @@ export async function main(): Promise<void> {
 
   const prices = new CoinGeckoPriceProvider({ apiKey: env.coingeckoApiKey });
   const store = Store.open('coinwatch.db');
-  // Single cache owner: PortfolioService write-through caches tx history.
-  // The tools layer also receives the store, but only for address labels.
-  const service = new PortfolioService(adapters, prices, store);
-  const server = buildServer(service, accounts, store);
 
   try {
+    const historicalPrices = new CachingHistoricalPriceProvider(
+      new CoinGeckoHistoricalPriceProvider({ apiKey: env.coingeckoApiKey }),
+      store,
+    );
+    const currentPrices = await prices.getUsdPrices(allCoingeckoIds());
+    const pnlExport = {
+      priceProvider: historicalPrices,
+      currentUsdPrice: (coingeckoId: string) => currentPrices.get(coingeckoId),
+    };
+    // Single cache owner: PortfolioService write-through caches tx history.
+    // The tools layer also receives the store, but only for address labels.
+    const service = new PortfolioService(adapters, prices, store);
+    const server = buildServer(service, accounts, store, pnlExport);
+    const exportCommand = parseExportPnlCommand(process.argv.slice(2));
+    if (exportCommand !== undefined) {
+      const handlers = buildHandlers(service, accounts, store, pnlExport);
+      const result = await handlers.export_pnl(exportCommand);
+      output.write(`${result.content[0].text}\n`);
+      return;
+    }
+
     for await (const msg of query({
       prompt: userMessages(),
       options: buildQueryOptions(server),

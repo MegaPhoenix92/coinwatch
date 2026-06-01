@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildQueryOptions } from '../../src/cli.js';
+import { buildQueryOptions, parseExportPnlCommand } from '../../src/cli.js';
 
 describe('CLI Agent SDK lockdown', () => {
   it('uses only the watch-only coinwatch MCP tools and strips all built-ins', () => {
@@ -30,5 +30,29 @@ describe('CLI Agent SDK lockdown', () => {
     const mod = await import('../../src/cli.js');
     expect(mod.main).toBeTypeOf('function');
     expect(mod.userMessages).toBeTypeOf('function');
+  });
+
+  it('parses the direct export-pnl command without affecting agent lockdown options', () => {
+    expect(
+      parseExportPnlCommand([
+        'export-pnl',
+        '--account',
+        'acct-1',
+        '--account-id',
+        'acct-2',
+        '--from',
+        '2026-01-01',
+        '--to',
+        '2026-12-31',
+        '--limit',
+        '50',
+      ]),
+    ).toEqual({
+      accountIds: ['acct-1', 'acct-2'],
+      from: '2026-01-01',
+      to: '2026-12-31',
+      limit: 50,
+    });
+    expect(parseExportPnlCommand([])).toBeUndefined();
   });
 });

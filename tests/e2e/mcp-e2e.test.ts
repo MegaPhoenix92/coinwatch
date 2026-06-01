@@ -179,7 +179,7 @@ describe('headless MCP e2e regression suite', () => {
     return { handlers: buildHandlers(service, accounts, store), store };
   }
 
-  it('exercises all five MCP handlers against the real fixture stack', async () => {
+  it('exercises the core MCP handlers against the real fixture stack', async () => {
     const { handlers, store: fixtureStore } = buildFixtureStack();
     fixtureStore.setLabel('bitcoin', BTC, 'labeled BTC vault');
 
