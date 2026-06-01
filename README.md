@@ -24,7 +24,37 @@ prices, per-account FIFO cost-basis/PnL, CSV export, opening-balance lots, recon
 external bookkeeping exports, and rules-first transaction categorization with manual overrides.
 coinwatch still never signs or broadcasts.
 
-## Setup
+## Requirements
+
+- **Node.js 20 or 22** (`engines.node`: `>=20`; CI exercises 20.x)
+- Public RPC / API keys as described in `.env.example` (optional but recommended for full chain coverage)
+
+## Releases
+
+Tagged releases (`v*.*.*`) run the [Release workflow](.github/workflows/release.yml): build `dist/`,
+re-run tests and security gates, and attach an `npm pack` tarball to the GitHub release.
+
+**Install from a tag:**
+
+```bash
+npm install -g github:MegaPhoenix92/coinwatch#v0.1.0
+coinwatch config template --out config/accounts.local.json
+coinwatch config validate
+```
+
+**Install from a local checkout:**
+
+```bash
+npm ci
+npm run build
+npm install -g .
+coinwatch config validate
+```
+
+See [RELEASING.md](RELEASING.md) for semver policy and the maintainer checklist. Version history
+is in [CHANGELOG.md](CHANGELOG.md).
+
+## Setup (development)
 
 1. Install dependencies:
 
