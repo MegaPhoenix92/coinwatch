@@ -26,12 +26,12 @@ jobs:
       - name: Verify release candidate
         run: |
           npm run typecheck
-          npm test
           npm run security:no-signing
           npm run security:secrets
           npm run build
           npm run release:verify
           npm run registry:verify
+          npm test
 
       - name: Pack installable tarball
         run: npm pack
