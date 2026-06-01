@@ -13,7 +13,13 @@ describe('release build artifact', () => {
     };
     expect(pkg.bin.coinwatch).toBe('./dist/cli.js');
     expect(pkg.files).toEqual(
-      expect.arrayContaining(['dist', 'config/accounts.example.json', 'README.md', 'CHANGELOG.md']),
+      expect.arrayContaining([
+        'dist',
+        'config/accounts.example.json',
+        'README.md',
+        'CHANGELOG.md',
+        'LICENSE',
+      ]),
     );
     expect(pkg.files.some((entry) => entry.startsWith('tests'))).toBe(false);
   });
