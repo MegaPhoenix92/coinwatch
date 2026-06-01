@@ -37,10 +37,10 @@ describe('registry-verify', () => {
   it('detects missing and extra rows', () => {
     const base = assetsToManifest(ASSETS);
     const [first, second] = base;
-    const extra = {
-      chain: 'ethereum' as const,
-      symbol: 'FAKE',
-      kind: 'token' as const,
+    const extra: (typeof base)[number] = {
+      chain: 'ethereum',
+      symbol: 'ETH',
+      kind: 'token',
       address: '0x0000000000000000000000000000000000000001',
       decimals: 18,
       coingeckoId: 'ethereum',
