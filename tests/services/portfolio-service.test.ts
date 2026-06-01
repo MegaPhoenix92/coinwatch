@@ -57,7 +57,10 @@ class FakeBitcoinAdapter implements ChainAdapter {
     return [balance];
   }
 
+  historyCalls = 0;
+
   async getHistory(_addresses: DerivedAddress[], _opts?: HistoryOptions): Promise<Tx[]> {
+    this.historyCalls += 1;
     return [
       {
         chain: 'bitcoin',
@@ -196,6 +199,39 @@ describe('PortfolioService', () => {
     await expect(service().getReceiveAddress([btcAccount], 'nope')).rejects.toThrow(
       'Account not found: nope',
     );
+  });
+
+  it('always refetches history from the provider when tx_cache already has rows (decision #49)', async () => {
+    const store = new Store(new Database(':memory:'));
+    await store.cacheTxs([
+      {
+        chain: 'bitcoin',
+        txid: 'stale-only',
+        direction: 'out',
+        symbol: 'BTC',
+        raw: 1n,
+        decimals: 8,
+        confirmed: true,
+      },
+    ]);
+    const adapter = new FakeBitcoinAdapter();
+    const svc = new PortfolioService(
+      new Map<ChainFamily, ChainAdapter>([['bitcoin', adapter]]),
+      new FakePriceProvider(),
+      store,
+    );
+
+    const first = await svc.getHistory([btcAccount]);
+    expect(adapter.historyCalls).toBe(1);
+    expect(first.map((tx) => tx.txid)).toEqual(['deadbeef']);
+    expect(await store.getCachedTxs('bitcoin').then((rows) => rows.map((t) => t.txid).sort())).toEqual([
+      'deadbeef',
+      'stale-only',
+    ]);
+
+    await svc.getHistory([btcAccount]);
+    expect(adapter.historyCalls).toBe(2);
+    await store.close();
   });
 
   it('concatenates history, respects limit, and writes through to Store when injected', async () => {

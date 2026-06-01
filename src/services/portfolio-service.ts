@@ -137,6 +137,8 @@ export class PortfolioService {
 
       try {
         const addresses = await adapter.resolveAddresses(account);
+        // Decision #49: always refetch from providers for user-visible history.
+        // tx_cache is write-through only (not read via getCachedTxs on this path).
         const txs = await adapter.getHistory(addresses, opts);
         if (this.store !== undefined) {
           await this.store.cacheTxs(txs);
