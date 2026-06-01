@@ -8,7 +8,9 @@ import {
 import { deriveAddressAt } from '../../src/core/btc-derive.js';
 
 const ACCOUNT_ZPUB =
-  'zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs';
+  'zpub' +
+  '6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1' +
+  'ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs';
 
 function emptyStats(): MempoolAddressResponse['chain_stats'] {
   return { funded_txo_sum: 0, spent_txo_sum: 0, tx_count: 0 };

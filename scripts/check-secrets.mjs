@@ -42,6 +42,12 @@ const ALLOWED_PUBLIC_FIXTURES = [
     reason: 'public zpub fixture used for deterministic watch-only address derivation tests',
   },
   {
+    file: 'tests/core/btc-gap-scan.test.ts',
+    kind: 'xpub/ypub/zpub',
+    text: PUBLIC_DERIVATION_ZPUB,
+    reason: 'public zpub fixture used for BIP44 gap-scan tests',
+  },
+  {
     file: 'tests/config/load.test.ts',
     kind: 'xpub/ypub/zpub',
     text: PLACEHOLDER_ZPUB,
