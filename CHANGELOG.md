@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - MIT `LICENSE` and SPDX `license` field (decision #46). Applies from this commit forward; v0.1.0 tarball predates the license file.
 - Bridged stablecoin registry rows (decision #47): `USDC.e` on Arbitrum / Optimism / Polygon; `USDT0` on Optimism — separate symbols from native `USDC` / `USDT`.
+- BIP44 gap-limit xpub discovery (decision #48): `resolveAddresses` scans receive and change branches via mempool until `gapLimit` consecutive unused; optional `maxGapScan` safety cap.
 
 ## [0.1.0] - 2026-06-01
 

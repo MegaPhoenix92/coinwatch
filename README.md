@@ -110,6 +110,12 @@ is in [CHANGELOG.md](CHANGELOG.md).
    Bitcoin `source.kind: "xpub"` supports `scriptType` values `p2wpkh`, `p2sh-p2wpkh`, and
    `p2pkh`. Literal watch-address sources use `{ "kind": "addresses", "addresses": [...] }`.
 
+   **BTC gap scan (decision #48):** `gapLimit` is the BIP44 gap width (default **20**): for each
+   receive and change branch, coinwatch derives index-by-index and probes mempool until that many
+   consecutive unused addresses. Optional `maxGapScan` (default **200**) caps highest index per
+   branch. `derive_receive_address` stays offline (single index); portfolio/history use the scanned
+   watch set. Wallets that skip more than `gapLimit` unused indices may still hide funds.
+
    Optional reporting reconciliation data can live in `config/opening-balances.local.json`
    (also gitignored). Use it only to declare pre-history opening lots or basis overrides:
 

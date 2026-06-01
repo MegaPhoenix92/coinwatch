@@ -59,13 +59,22 @@ const selfTx: MempoolTx = {
   fee: 1000,
 };
 
+const EMPTY_STATS = {
+  chain_stats: { funded_txo_sum: 0, spent_txo_sum: 0, tx_count: 0 },
+  mempool_stats: { funded_txo_sum: 0, spent_txo_sum: 0, tx_count: 0 },
+} as const;
+
 class FakeBtcProvider implements BtcDataProvider {
   constructor(
     private readonly txs: MempoolTx[] = [inboundTx],
     private readonly addressResponse: MempoolAddressResponse = fixture,
+    private readonly usedAddresses: Set<string> | 'all' = 'all',
   ) {}
 
   async getAddress(address: string): Promise<MempoolAddressResponse> {
+    if (this.usedAddresses !== 'all' && !this.usedAddresses.has(address)) {
+      return { address, ...EMPTY_STATS };
+    }
     return { ...this.addressResponse, address };
   }
 
@@ -145,12 +154,12 @@ describe('BitcoinAdapter', () => {
     expect(resolved).toEqual([{ address: ADDRESS, chain: 'bitcoin', derived: false }]);
   });
 
-  it('resolveAddresses derives from an xpub using account gapLimit or default 20', async () => {
-    const adapter = new BitcoinAdapter(new FakeBtcProvider());
+  it('resolveAddresses BIP44 gap-scans receive and change branches separately', async () => {
+    const adapter = new BitcoinAdapter(new FakeBtcProvider([inboundTx], fixture, new Set([ADDRESS])));
 
-    const two = await adapter.resolveAddresses(xpubAccount(2));
-    expect(two).toHaveLength(4);
-    expect(two.slice(0, 2)).toEqual([
+    const gap2 = await adapter.resolveAddresses(xpubAccount(2));
+    expect(gap2).toHaveLength(5);
+    expect(gap2.slice(0, 3)).toEqual([
       { address: ADDRESS, chain: 'bitcoin', path: "m/84'/0'/0'/0/0", derived: true },
       {
         address: 'bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g',
@@ -158,12 +167,22 @@ describe('BitcoinAdapter', () => {
         path: "m/84'/0'/0'/0/1",
         derived: true,
       },
+      {
+        address: 'bc1qp59yckz4ae5c4efgw2s5wfyvrz0ala7rgvuz8z',
+        chain: 'bitcoin',
+        path: "m/84'/0'/0'/0/2",
+        derived: true,
+      },
     ]);
-    expect(two[2]?.path).toBe("m/84'/0'/0'/1/0");
-    expect(two[2]?.derived).toBe(true);
-    expect(two[3]?.path).toBe("m/84'/0'/0'/1/1");
+    expect(gap2[3]?.path).toBe("m/84'/0'/0'/1/0");
+    expect(gap2[4]?.path).toBe("m/84'/0'/0'/1/1");
 
-    const defaultGap = await adapter.resolveAddresses(xpubAccount());
+    const unusedOnly = new FakeBtcProvider([], {
+      ...fixture,
+      chain_stats: { funded_txo_sum: 0, spent_txo_sum: 0, tx_count: 0 },
+      mempool_stats: { funded_txo_sum: 0, spent_txo_sum: 0, tx_count: 0 },
+    });
+    const defaultGap = await new BitcoinAdapter(unusedOnly).resolveAddresses(xpubAccount());
     expect(defaultGap).toHaveLength(40);
     expect(defaultGap.filter((address) => address.path?.includes('/0/'))).toHaveLength(20);
     expect(defaultGap.filter((address) => address.path?.includes('/1/'))).toHaveLength(20);

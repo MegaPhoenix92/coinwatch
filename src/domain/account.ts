@@ -3,7 +3,13 @@ import type { Chain, ChainFamily } from './chains.js';
 export type BtcScriptType = 'p2wpkh' | 'p2sh-p2wpkh' | 'p2pkh';
 
 export type AccountSource =
-  | { kind: 'xpub'; xpub: string; scriptType: BtcScriptType; gapLimit?: number }
+  | {
+      kind: 'xpub';
+      xpub: string;
+      scriptType: BtcScriptType;
+      gapLimit?: number;
+      maxGapScan?: number;
+    }
   | { kind: 'addresses'; addresses: string[] };
 
 export interface AccountDescriptor {

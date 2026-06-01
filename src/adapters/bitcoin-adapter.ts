@@ -1,6 +1,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { base64, hex } from '@scure/base';
 import * as btc from '@scure/btc-signer';
+import { DEFAULT_MAX_GAP_SCAN_INDEX, scanGapBranch } from '../core/btc-gap-scan.js';
 import { deriveAddresses } from '../core/btc-derive.js';
 import { inferSelfTransferLeg } from '../core/self-transfer.js';
 import { formatUnits } from '../core/money.js';
@@ -24,6 +25,7 @@ const RECEIVE_NOTE_DERIVED =
   'Receive address derived from your xpub - verify it on your signing device before use.';
 const RECEIVE_NOTE_LITERAL =
   'This is your supplied address - verify on your signing device before use.';
+
 const DEFAULT_GAP_LIMIT = 20;
 
 export interface BitcoinBalancePending {
@@ -130,17 +132,23 @@ export class BitcoinAdapter implements ChainAdapter {
   async resolveAddresses(account: AccountDescriptor): Promise<DerivedAddress[]> {
     const source = account.source;
     if (source.kind === 'xpub') {
-      const receive = deriveAddresses(
+      const gapLimit = source.gapLimit ?? DEFAULT_GAP_LIMIT;
+      const maxIndex = source.maxGapScan ?? DEFAULT_MAX_GAP_SCAN_INDEX;
+      const receive = await scanGapBranch(
+        this.provider,
         source.xpub,
         source.scriptType,
-        source.gapLimit ?? DEFAULT_GAP_LIMIT,
+        gapLimit,
         0,
+        maxIndex,
       );
-      const change = deriveAddresses(
+      const change = await scanGapBranch(
+        this.provider,
         source.xpub,
         source.scriptType,
-        source.gapLimit ?? DEFAULT_GAP_LIMIT,
+        gapLimit,
         1,
+        maxIndex,
       );
       const derived = [...receive, ...change];
       return derived.map((address) => ({
