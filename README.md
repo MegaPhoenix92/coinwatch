@@ -1,5 +1,9 @@
 # coinwatch
 
+**Product name:** `coinwatch` is the final name (decision #45). The npm package, CLI binary,
+MCP tools (`mcp__coinwatch__*`), and app-owned environment variables (`COINWATCH_*`) all use this
+identity. Renaming after v0.1.0 is a breaking migration, not a docs-only change.
+
 A **watch-only, multi-chain crypto wallet** driven by a Claude Agent SDK terminal agent.
 
 `coinwatch` reads your holdings across **Bitcoin, EVM chains (Ethereum / Base / Polygon /
