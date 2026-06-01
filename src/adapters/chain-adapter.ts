@@ -1,5 +1,6 @@
 import type { AccountDescriptor, DerivedAddress } from '../domain/account.js';
 import type { ChainFamily, EvmChain } from '../domain/chains.js';
+import type { HistoricalUsdPrice, UtcDateString } from '../domain/historical-price.js';
 import type { ChainAdapterTransferParams, UnsignedArtifact } from '../domain/transfer.js';
 import type { Balance, HistoryOptions, Tx } from '../domain/types.js';
 
@@ -137,4 +138,11 @@ export interface SolDataProvider {
 
 export interface PriceProvider {
   getUsdPrices(coingeckoIds: string[]): Promise<Map<string, number>>;
+}
+
+export interface HistoricalPriceProvider {
+  getHistoricalUsdPrice(
+    coingeckoId: string,
+    date: UtcDateString,
+  ): Promise<HistoricalUsdPrice | undefined>;
 }
